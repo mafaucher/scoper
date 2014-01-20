@@ -29,153 +29,144 @@ import gate.util.*;
  * This class is the implementation of the resource SCOPEEXPORTER.
  */
 @CreoleResource(name = "AdjScope",
-		comment = "Annotateds Scope of Adjectives from a Trigger List")
+        comment = "Annotateds Scope of Adjectives from a Trigger List")
 public class AdjScope
-	extends AbstractLanguageAnalyser
-	implements ProcessingResource {
+    extends AbstractLanguageAnalyser
+    implements ProcessingResource {
 
-	//TODO: should I filter out a list of deps.:
-	//private static String[] depList = {"neg","det","dep","pobj","pcomp","xcomp","advmod","amod","infmod","cc","nsubj","conj","nsubjpass","dobj","conj_negcc","preconj","conj_nor","conj_but","conj_and","conj_or","prep","ccomp","nn","expl","acomp","rcmod","auxpass","compl","cop","mark","aux"};
-	private static String[] depList = {"amod","rcmod"};
-	
-	// TODO: Make configurable
-	protected String triggerAnnName = "Trigger";
-	protected String scopeAnnName = "Scope";
-	public boolean scopeFound = false;
+    //D"neg","det","dep","pobj","pcomp",
+    //"xcomp","advmod","amod","infmod","cc","nsubj","conj","nsubjpass","dobj","conj_negcc","preconj","conj_nor","conj_but","conj_and","conj_or","prep","ccomp","nn","expl","acomp","rcmod","auxpass","compl","cop","mark","aux"};
+    private static String[] modDepList = {"amod", "advmod", "rcmod"};
 
-	public void execute() throws ExecutionException {
-		if (document == null) {
-			throw new GateRuntimeException("No document to process!");
-		}
+    // TODO: Make configurable
+    protected String triggerAnnName = "Trigger";
+    protected String scopeAnnName = "Scope";
 
-		String docName = (new File(document.getSourceUrl().getFile())).getName();
-		String out = "";
-		
-		// Get the list of triggers
-		
-		AnnotationSet triggerAnnSet = document.getAnnotations().get(triggerAnnName);
+    public void execute() throws ExecutionException {
+        if (document == null) {
+            throw new GateRuntimeException("No document to process!");
+        }
 
-		for (Annotation trigger : triggerAnnSet) {
-			//Annotation sentence = getSpanning(trigger, document.getAnnotations().get("Sentence"));
-			Annotation token = getCoextensive(trigger, document.getAnnotations().get("Token"));
-			// TODO: If the trigger  is not a single token, Give up (e.g. Pro-American)
-			if (token == null) {
-				System.err.println("Warning: Multi-token trigger: "+getAnnotationText(trigger));
-				continue;
-			}
-			annotateScope(token, document.getAnnotations());
-		}
-	}
-	
-	// Get a list of dependencies for a given token
-	// This currently returns a comma seperated string, but this may change in the future
-	private void annotateScope(Annotation token, AnnotationSet anns) {
-		//List<String> results = new ArrayList<String>();
-		String results = "";
-		
-		for (Annotation dep : document.getAnnotations().get("Dependency")) {
-			String kind = dep.getFeatures().get("kind").toString().trim();
-			String ids = dep.getFeatures().get("args").toString().trim();
-			ids = ids.substring(1, ids.length()-1);
-			String[] args = ids.split("\\,");
-			int govId = Integer.parseInt(args[0].trim());
-			for (int i = 0; i < depList.length; i++) {
-				if (kind.equals(depList[i]) && token.getId() == govId) {
-					if (scopeFound) {
-						System.err.println( "Warning: Multiple '*mod' dependencies for trigger: "
-								           +getAnnotationText(token) );
-						continue;
-					}
-					try {
-						scopeFound = true;
-						Annotation scope = (Annotation) anns.get(govId);
-						Long start = scope.getStartNode().getOffset();
-						Long end = scope.getEndNode().getOffset();
-						FeatureMap fm = gate.Factory.newFeatureMap();
-						fm.put("heuristic", dep.getFeatures().get("kind").toString().trim());
-						anns.add(start, end, scopeAnnName, fm);
-					} catch (InvalidOffsetException e) {
-						e.printStackTrace();
-					}
-				}
-			}
-		}
-	}
+        String docName = (new File(document.getSourceUrl().getFile())).getName();
+        String out = "";
 
-	// Find the first coextensive annotation in a list or return null
-	private Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
-		for (Annotation a : alist) {
-			if (ann.coextensive(a)) {
-				return a;
-			}
-		}
-		return null;
-	}
+        // Get the list of triggers
 
-	// Find the first overlaping annotation in a list or return null
-	private Annotation getOverlaping(Annotation ann, AnnotationSet alist) {
-		for (Annotation a : alist) {
-			if (ann.overlaps(a)) {
-				return a;
-			}
-		}
-		return null;
-	}
+        AnnotationSet triggerAnnSet = document.getAnnotations().get(triggerAnnName);
 
-	// Find the first spanning annotation in a list or return null
-	private Annotation getSpanning(Annotation ann, AnnotationSet alist) {
-		for (Annotation a : alist) {
-			if (ann.withinSpanOf(a)) {
-				return a;
-			}
-		}
-		return null;
-	}
+        for (Annotation trigger : triggerAnnSet) {
+            //Annotation sentence = getSpanning(trigger, document.getAnnotations().get("Sentence"));
+            Annotation token = getCoextensive(trigger, document.getAnnotations().get("Token"));
+            // TODO: If the trigger  is not a single token, Give up (e.g. Pro-American)
+            if (token == null) {
+                System.err.println("Warning: Multi-token trigger: "+getAnnotationText(trigger));
+                continue;
+            }
+            annotateScope(token, document.getAnnotations());
+        }
+    }
 
-	private Annotation getScope(Annotation trigger, AnnotationSet alist) {
-		for (Annotation a : alist) {
-			if ( a.getFeatures().containsKey("ID_of_Input_Trigger") &&
-					trigger.getId() == Integer.parseInt(
-						a.getFeatures().get("ID_of_Input_Trigger").toString() ) ) {
-				return a;
-			}
-		}
-		return null;
-	}
-	// Get the text of an annotation
-	private gate.DocumentContent getAnnotationText(Annotation annotation) {
-		try {   
-			return this.getDocument().getContent().getContent(
-					annotation.getStartNode().getOffset(),
-					annotation.getEndNode().getOffset());
-		}
-		catch(gate.util.InvalidOffsetException e) {
-			System.err.println("INVALID ANNOTATION OFFSET");
-			return null;
-		}
-	}
+    // Get a list of dependencies for a given token
+    // This currently returns a comma seperated string, but this may change in the future
+    private void annotateScope(Annotation token, AnnotationSet anns) {
+        //List<String> results = new ArrayList<String>();
+        boolean scopeFound = false;
+        // Iterate through all Dependencies TODO: Inefficient
+        for (Annotation dep : document.getAnnotations().get("Dependency")) {
+            String kind = dep.getFeatures().get("kind").toString().trim();
+            String ids = dep.getFeatures().get("args").toString().trim();
+            ids = ids.substring(1, ids.length()-1);
+            String[] args = ids.split("\\,");
+            int depId = Integer.parseInt(args[1].trim());
+            int govId = Integer.parseInt(args[0].trim());
+            // Check *mod dependencies
+            for (int i = 0; i < modDepList.length; i++) {
+                if (kind.equals(modDepList[i]) && token.getId() == depId) {
+                    if (scopeFound ) {
+                        System.err.println( "Warning: Multiple '*mod' dependencies for trigger: "
+                                          + getAnnotationText(token) + " (" + modDepList[i] + ")" );
+                        continue;
+                    }
+                    try {
+                        Annotation scope = (Annotation) anns.get(govId);
+                        Long start = scope.getStartNode().getOffset();
+                        Long end = scope.getEndNode().getOffset();
+                        FeatureMap fm = gate.Factory.newFeatureMap();
+                        fm.put("heuristic", dep.getFeatures().get("kind").toString().trim());
+                        anns.add(start, end, scopeAnnName, fm);
+                        scopeFound = true;
+                    } catch (InvalidOffsetException e) {
+                        e.printStackTrace();
+                    }
+                }
+            }
+        }
+    }
 
-	/**
-	 * Initialize the resource.
-	 */
-	public Resource init() throws ResourceInstantiationException {
-		super.init();
-		return this;
-	}
+    // Find the first coextensive annotation in a list or return null
+    private Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
+        for (Annotation a : alist) {
+            if (ann.coextensive(a)) {
+                return a;
+            }
+        }
+        return null;
+    }
 
-	@Override
-	public void reInit() throws ResourceInstantiationException {
-		init();
-	}
+    // Find the first overlaping annotation in a list or return null
+    private Annotation getOverlaping(Annotation ann, AnnotationSet alist) {
+        for (Annotation a : alist) {
+            if (ann.overlaps(a)) {
+                return a;
+            }
+        }
+        return null;
+    }
 
-	@RunTime
-	@CreoleParameter(comment = "The document to be processed")
-	public void setDocument(gate.Document document) {
-		this.document = document;
-	}
+    // Find the first spanning annotation in a list or return null
+    private Annotation getSpanning(Annotation ann, AnnotationSet alist) {
+        for (Annotation a : alist) {
+            if (ann.withinSpanOf(a)) {
+                return a;
+            }
+        }
+        return null;
+    }
 
-	public gate.Document getDocument() {
-		return this.document;
-	}
+    // Get the text of an annotation
+    private gate.DocumentContent getAnnotationText(Annotation annotation) {
+        try {
+            return this.getDocument().getContent().getContent(
+                    annotation.getStartNode().getOffset(),
+                    annotation.getEndNode().getOffset());
+        }
+        catch(gate.util.InvalidOffsetException e) {
+            System.err.println("INVALID ANNOTATION OFFSET");
+            return null;
+        }
+    }
+
+    /**
+     * Initialize the resource.
+     */
+    public Resource init() throws ResourceInstantiationException {
+        super.init();
+        return this;
+    }
+
+    @Override
+    public void reInit() throws ResourceInstantiationException {
+        init();
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "The document to be processed")
+    public void setDocument(gate.Document document) {
+        this.document = document;
+    }
+
+    public gate.Document getDocument() {
+        return this.document;
+    }
 
 }
