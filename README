@@ -1,0 +1,15 @@
+AdjScope
+========
+
+Instructions
+------------
+
+This is a GATE Processing Resource used to annotate the scope of adjectival
+modifiers. Requires: Tokens, Dependencies, as well as trigger annotations.
+
+Parameters:
+
+    - triggerAnnName: Name of the trigger annotations
+    - scopeAnnName: Name of the scope annotations
+    - (optional) inputAnnotationSetName: Name of the input annotation set
+    - (optional) outputAnnotationSetName: Name of the output annotation set

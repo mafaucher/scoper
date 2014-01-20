@@ -36,43 +36,41 @@ public class AdjScope
 
     //D"neg","det","dep","pobj","pcomp",
     //"xcomp","advmod","amod","infmod","cc","nsubj","conj","nsubjpass","dobj","conj_negcc","preconj","conj_nor","conj_but","conj_and","conj_or","prep","ccomp","nn","expl","acomp","rcmod","auxpass","compl","cop","mark","aux"};
-    private static String[] modDepList = {"amod", "advmod", "rcmod"};
+    private static String[] modDepList = {"amod", "advmod", "rcmod", "quantmod", "infmod", "partmod"};
 
-    // TODO: Make configurable
-    protected String triggerAnnName = "Trigger";
-    protected String scopeAnnName = "Scope";
+    protected String inputAnnotationSetName;
+    protected String outputAnnotationSetName;
+    protected String triggerAnnName;
+    protected String scopeAnnName;
 
     public void execute() throws ExecutionException {
         if (document == null) {
             throw new GateRuntimeException("No document to process!");
         }
-
+        AnnotationSet inAnns = document.getAnnotations(inputAnnotationSetName);
+        AnnotationSet outAnns = document.getAnnotations(outputAnnotationSetName);
         String docName = (new File(document.getSourceUrl().getFile())).getName();
         String out = "";
-
-        // Get the list of triggers
-
-        AnnotationSet triggerAnnSet = document.getAnnotations().get(triggerAnnName);
-
-        for (Annotation trigger : triggerAnnSet) {
-            //Annotation sentence = getSpanning(trigger, document.getAnnotations().get("Sentence"));
-            Annotation token = getCoextensive(trigger, document.getAnnotations().get("Token"));
-            // TODO: If the trigger  is not a single token, Give up (e.g. Pro-American)
-            if (token == null) {
-                System.err.println("Warning: Multi-token trigger: "+getAnnotationText(trigger));
-                continue;
-            }
-            annotateScope(token, document.getAnnotations());
+        AnnotationSet triggers = inAnns.get(triggerAnnName);
+        for (Annotation trigger : triggers) {
+            annotateScope(trigger, inAnns, outAnns);
         }
     }
 
     // Get a list of dependencies for a given token
     // This currently returns a comma seperated string, but this may change in the future
-    private void annotateScope(Annotation token, AnnotationSet anns) {
+    private void annotateScope(Annotation trigger, AnnotationSet inAnns, AnnotationSet outAnns) {
         //List<String> results = new ArrayList<String>();
+        Annotation token = getCoextensive(trigger, inAnns.get("Token"));
+        // TODO: If the trigger is not a single token, Give up (e.g. Pro-American)
+        if (token == null) {
+            System.err.println("Warning: Multi-token trigger: "+getAnnotationText(trigger));
+            return;
+        }
+        // Triggers should only have one scope, issue a warning otherwise
         boolean scopeFound = false;
         // Iterate through all Dependencies TODO: Inefficient
-        for (Annotation dep : document.getAnnotations().get("Dependency")) {
+        for (Annotation dep : inAnns.get("Dependency")) {
             String kind = dep.getFeatures().get("kind").toString().trim();
             String ids = dep.getFeatures().get("args").toString().trim();
             ids = ids.substring(1, ids.length()-1);
@@ -88,12 +86,14 @@ public class AdjScope
                         continue;
                     }
                     try {
-                        Annotation scope = (Annotation) anns.get(govId);
+                        Annotation scope = (Annotation) inAnns.get(govId);
                         Long start = scope.getStartNode().getOffset();
                         Long end = scope.getEndNode().getOffset();
                         FeatureMap fm = gate.Factory.newFeatureMap();
                         fm.put("heuristic", dep.getFeatures().get("kind").toString().trim());
-                        anns.add(start, end, scopeAnnName, fm);
+                        fm.put("triggerID", trigger.getId());
+                        fm.put("tokenID", token.getId());
+                        outAnns.add(start, end, scopeAnnName, fm);
                         scopeFound = true;
                     } catch (InvalidOffsetException e) {
                         e.printStackTrace();
@@ -157,6 +157,48 @@ public class AdjScope
     @Override
     public void reInit() throws ResourceInstantiationException {
         init();
+    }
+
+    @Optional
+    @RunTime
+    @CreoleParameter(comment = "The annotation set name for the input annotations")
+    public void setInputAnnotationSetName(String inputAnnotationSetName) {
+        this.inputAnnotationSetName = inputAnnotationSetName;
+    }
+
+    public String getInputAnnotationSetName() {
+        return this.inputAnnotationSetName;
+    }
+
+    @Optional
+    @RunTime
+    @CreoleParameter(comment = "The annotation set name for the output annotations")
+    public void setOutputAnnotationSetName(String outputAnnotationSetName) {
+        this.outputAnnotationSetName = outputAnnotationSetName;
+    }
+
+    public String getOutputAnnotationSetName() {
+        return this.outputAnnotationSetName;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "The annotation name for triggers", defaultValue="Trigger")
+    public void setTriggerAnnName(String triggerAnnName) {
+        this.triggerAnnName = triggerAnnName;
+    }
+
+    public String getTriggerAnnName() {
+        return this.triggerAnnName;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "The annotation name for scopes", defaultValue="Scope")
+    public void setScopeAnnName(String scopeAnnName) {
+        this.scopeAnnName = scopeAnnName;
+    }
+
+    public String getScopeAnnName() {
+        return this.scopeAnnName;
     }
 
     @RunTime
