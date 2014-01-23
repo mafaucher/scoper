@@ -29,14 +29,12 @@ import gate.util.*;
  * This class is the implementation of the resource SCOPEEXPORTER.
  */
 @CreoleResource(name = "AdjScope",
-        comment = "Annotateds Scope of Adjectives from a Trigger List")
-public class AdjScope
-    extends AbstractLanguageAnalyser
-    implements ProcessingResource {
+        comment = "Annotates Scope of Adjectives from a Trigger List")
+public class AdjScope extends AbstractLanguageAnalyser
+        implements ProcessingResource {
 
-    //D"neg","det","dep","pobj","pcomp",
-    //"xcomp","advmod","amod","infmod","cc","nsubj","conj","nsubjpass","dobj","conj_negcc","preconj","conj_nor","conj_but","conj_and","conj_or","prep","ccomp","nn","expl","acomp","rcmod","auxpass","compl","cop","mark","aux"};
-    private static String[] modDepList = {"amod", "advmod", "rcmod", "quantmod", "infmod", "partmod"};
+    private static String[] modDepList = { "amod", "advmod", "rcmod",
+                                           "quantmod", "infmod", "partmod"};
 
     protected String inputAnnotationSetName;
     protected String outputAnnotationSetName;
@@ -57,8 +55,7 @@ public class AdjScope
         }
     }
 
-    // Get a list of dependencies for a given token
-    // This currently returns a comma seperated string, but this may change in the future
+    /** Annotate the scope of a given trigger */
     private void annotateScope(Annotation trigger, AnnotationSet inAnns, AnnotationSet outAnns) {
         //List<String> results = new ArrayList<String>();
         Annotation token = getCoextensive(trigger, inAnns.get("Token"));
@@ -103,7 +100,7 @@ public class AdjScope
         }
     }
 
-    // Find the first coextensive annotation in a list or return null
+    /** Find the first coextensive annotation in a list or return null */
     private Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
         for (Annotation a : alist) {
             if (ann.coextensive(a)) {
@@ -113,7 +110,7 @@ public class AdjScope
         return null;
     }
 
-    // Find the first overlaping annotation in a list or return null
+    /** Find the first overlaping annotation in a list or return null */
     private Annotation getOverlaping(Annotation ann, AnnotationSet alist) {
         for (Annotation a : alist) {
             if (ann.overlaps(a)) {
@@ -123,7 +120,7 @@ public class AdjScope
         return null;
     }
 
-    // Find the first spanning annotation in a list or return null
+    /** Find the first spanning annotation in a list or return null */
     private Annotation getSpanning(Annotation ann, AnnotationSet alist) {
         for (Annotation a : alist) {
             if (ann.withinSpanOf(a)) {
@@ -133,7 +130,7 @@ public class AdjScope
         return null;
     }
 
-    // Get the text of an annotation
+    /** Get the text of an annotation */
     private gate.DocumentContent getAnnotationText(Annotation annotation) {
         try {
             return this.getDocument().getContent().getContent(
@@ -146,14 +143,11 @@ public class AdjScope
         }
     }
 
-    /**
-     * Initialize the resource.
-     */
+    /** Initialize the resource. */
     public Resource init() throws ResourceInstantiationException {
         super.init();
         return this;
     }
-
     @Override
     public void reInit() throws ResourceInstantiationException {
         init();
