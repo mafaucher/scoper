@@ -59,9 +59,13 @@ public class AdjScope extends AbstractLanguageAnalyser
     private void annotateScope(Annotation trigger, AnnotationSet inAnns, AnnotationSet outAnns) {
         //List<String> results = new ArrayList<String>();
         Annotation token = getCoextensive(trigger, inAnns.get("Token"));
-        // TODO: If the trigger is not a single token, Give up (e.g. Pro-American)
+        // If the trigger is not a single token, Give up (e.g. Pro-American)
         if (token == null) {
             System.err.println("Warning: Multi-token trigger: "+getAnnotationText(trigger));
+            return;
+        }
+        // Only for adjectives
+        if (!token.getFeatures().get("category").substring(0,2).equals("JJ")) {
             return;
         }
         // Triggers should only have one scope, issue a warning otherwise
