@@ -55,19 +55,26 @@ public class AdjScope extends AbstractLanguageAnalyser
         }
     }
 
+    private boolean isAdj(Annotation token) {
+        String pos = (String) token.getFeatures().get("category");
+        if ( pos.length() > 2 && pos.substring(0,2).equals("JJ") ) {
+            return true;
+        }
+        return false;
+    }
+
     /** Annotate the scope of a given trigger */
     private void annotateScope(Annotation trigger, AnnotationSet inAnns, AnnotationSet outAnns) {
         //List<String> results = new ArrayList<String>();
         Annotation token = getCoextensive(trigger, inAnns.get("Token"));
         // If the trigger is not a single token, Give up (e.g. Pro-American)
         if (token == null) {
-            System.err.println("Warning: Multi-token trigger: "+getAnnotationText(trigger));
+            System.err.println("Warning: no token for trigger: "
+                              +getAnnotationText(trigger));
             return;
         }
-        // Only for adjectives
-        if (!token.getFeatures().get("category").substring(0,2).equals("JJ")) {
-            return;
-        }
+        // Ignore non-adjectives
+        if (!isAdj(token)) { return; }
         // Triggers should only have one scope, issue a warning otherwise
         boolean scopeFound = false;
         // Iterate through all Dependencies TODO: Inefficient
