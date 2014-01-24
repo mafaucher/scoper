@@ -55,14 +55,6 @@ public class AdjScope extends AbstractLanguageAnalyser
         }
     }
 
-    private boolean isAdj(Annotation token) {
-        String pos = (String) token.getFeatures().get("category");
-        if ( pos.length() > 2 && pos.substring(0,2).equals("JJ") ) {
-            return true;
-        }
-        return false;
-    }
-
     /** Annotate the scope of a given trigger */
     private void annotateScope(Annotation trigger, AnnotationSet inAnns, AnnotationSet outAnns) {
         //List<String> results = new ArrayList<String>();
@@ -110,6 +102,16 @@ public class AdjScope extends AbstractLanguageAnalyser
             }
         }
     }
+
+    private boolean isAdj(Annotation token) {
+        String pos = (String) token.getFeatures().get("category");
+        if ( pos.length() >= 2 && pos.substring(0,2).equals("JJ") ) {
+        System.out.println("pos: "+pos);
+            return true;
+        }
+        return false;
+    }
+
 
     /** Find the first coextensive annotation in a list or return null */
     private Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
