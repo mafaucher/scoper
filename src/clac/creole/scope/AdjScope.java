@@ -106,7 +106,6 @@ public class AdjScope extends AbstractLanguageAnalyser
     private boolean isAdj(Annotation token) {
         String pos = (String) token.getFeatures().get("category");
         if ( pos.length() >= 2 && pos.substring(0,2).equals("JJ") ) {
-        System.out.println("pos: "+pos);
             return true;
         }
         return false;
