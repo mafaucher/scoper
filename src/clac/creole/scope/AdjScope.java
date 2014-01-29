@@ -33,8 +33,8 @@ import gate.util.*;
 public class AdjScope extends AbstractLanguageAnalyser
         implements ProcessingResource {
 
-    private static String[] modDepList = { "amod", "advmod", "rcmod",
-                                           "quantmod", "infmod", "partmod"};
+    private static String[] modDepList = {
+            "amod", "rcmod", "quantmod", "infmod", "partmod" };
 
     protected String inputAnnotationSetName;
     protected String outputAnnotationSetName;
@@ -45,34 +45,40 @@ public class AdjScope extends AbstractLanguageAnalyser
         if (document == null) {
             throw new GateRuntimeException("No document to process!");
         }
-        AnnotationSet inAnns = document.getAnnotations(inputAnnotationSetName);
+        AnnotationSet inAnns  = document.getAnnotations(inputAnnotationSetName);
         AnnotationSet outAnns = document.getAnnotations(outputAnnotationSetName);
-        String docName = (new File(document.getSourceUrl().getFile())).getName();
-        String out = "";
         AnnotationSet triggers = inAnns.get(triggerAnnName);
         for (Annotation trigger : triggers) {
-            annotateScope(trigger, inAnns, outAnns);
+            // Make sure no scope exists for this trigger
+            Annotation scope = getScope(trigger, inAnns);
+            if (scope != null) {
+                    System.err.println("Warning: existing scope for trigger '"
+                                      +getAnnotationText(trigger)+"' -> '"
+                                      +getAnnotationText(scope
+            }
+            // Triggers should overlap with a token
+            Annotation token = getCoextensive(trigger, inAnns.get("Token"));
+            if (token == null) {
+                System.err.println("Warning: no token for trigger: "
+                                  +getAnnotationText(trigger));
+                return;
+            }
+            // Ignore non-adjectives TODO: What about nominal modifiers?
+            if (!filterPos(token, "JJ")) continue;
+            // Heuristics
+            modScope(trigger, inAnns, outAnns);
         }
     }
 
     /** Annotate the scope of a given trigger */
-    private void annotateScope(Annotation trigger, AnnotationSet inAnns, AnnotationSet outAnns) {
-        //List<String> results = new ArrayList<String>();
+    private void modScope(Annotation trigger, AnnotationSet inAnns, AnnotationSet outAnns) {
         Annotation token = getCoextensive(trigger, inAnns.get("Token"));
-        // If the trigger is not a single token, Give up (e.g. Pro-American)
-        if (token == null) {
-            System.err.println("Warning: no token for trigger: "
-                              +getAnnotationText(trigger));
-            return;
-        }
-        // Ignore non-adjectives
-        if (!isAdj(token)) { return; }
         // Triggers should only have one scope, issue a warning otherwise
         boolean scopeFound = false;
-        // Iterate through all Dependencies TODO: Inefficient
+        // Iterate through all Dependencies TODO: Inefficient, limit by offset
         for (Annotation dep : inAnns.get("Dependency")) {
             String kind = dep.getFeatures().get("kind").toString().trim();
-            String ids = dep.getFeatures().get("args").toString().trim();
+            String ids  = dep.getFeatures().get("args").toString().trim();
             ids = ids.substring(1, ids.length()-1);
             String[] args = ids.split("\\,");
             int depId = Integer.parseInt(args[1].trim());
@@ -80,7 +86,7 @@ public class AdjScope extends AbstractLanguageAnalyser
             // Check *mod dependencies
             for (int i = 0; i < modDepList.length; i++) {
                 if (kind.equals(modDepList[i]) && token.getId() == depId) {
-                    if (scopeFound ) {
+                    if (scopeFound) {
                         System.err.println( "Warning: Multiple '*mod' dependencies for trigger: "
                                           + getAnnotationText(token) + " (" + modDepList[i] + ")" );
                         continue;
@@ -92,7 +98,7 @@ public class AdjScope extends AbstractLanguageAnalyser
                         FeatureMap fm = gate.Factory.newFeatureMap();
                         fm.put("heuristic", dep.getFeatures().get("kind").toString().trim());
                         fm.put("triggerID", trigger.getId());
-                        fm.put("tokenID", token.getId());
+                        fm.put("tokenID",   token.getId());
                         outAnns.add(start, end, scopeAnnName, fm);
                         scopeFound = true;
                     } catch (InvalidOffsetException e) {
@@ -103,14 +109,30 @@ public class AdjScope extends AbstractLanguageAnalyser
         }
     }
 
-    private boolean isAdj(Annotation token) {
-        String pos = (String) token.getFeatures().get("category");
-        if ( pos.length() >= 2 && pos.substring(0,2).equals("JJ") ) {
-            return true;
+    /** Find the scope which corresponds to this trigger or token */
+    private Annotation getScope(Annotation trigger, AnnotationSet alist) {
+        AnnotationSet scopes = alist.get(scopeAnnName);
+        for (Annotation scope : scopes) {
+            Annotation scopeTrigger = alist.get(Integer.parseInt(
+                    scope.getFeatures().get("triggerID").toString()));
+            if ( scope.getFeatures().containsKey("triggerID") &&
+                    trigger.coextensive(scopeTrigger) ) {
+                return scope;
+            }
         }
-        return false;
+        return null;
     }
 
+    /** Returns true iff token's POS matches given POS. */
+    private boolean filterPos(Annotation token, String pos) {
+        filterPos(token, pos, false);
+    }
+    private boolean filterPos(Annotation token, String pos, boolean strict) {
+        String tokenPos = token.getFeatures().get("category");
+        if (strict) return tokenPos.equals(pos);
+        return ( tokenPos.length() >= pos.length() &&
+                 tokenPos.substring(0, pos.length()).equals(pos) );
+    }
 
     /** Find the first coextensive annotation in a list or return null */
     private Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
