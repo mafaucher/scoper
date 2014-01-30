@@ -59,6 +59,32 @@ public class AdjScope extends AbstractLanguageAnalyser
                 continue;
             }
             adjScope(trigger);
+            //nomScope(trigger);
+        }
+    }
+
+    /** Annotate the scope of a given trigger */
+    private void nomScope(Annotation trigger) {
+        Annotation token = getCoextensive(trigger, inAnns.get("Token"));
+        // Get nominalizations (TODO)
+        if (!filterPos(token, "NN")) return;
+        // Iterate through all Dependencies TODO: Inefficient, limit by offset
+        for (Annotation dep : inAnns.get("Dependency")) {
+            String kind = dep.getFeatures().get("kind").toString().trim();
+            String ids  = dep.getFeatures().get("args").toString().trim();
+            ids = ids.substring(1, ids.length()-1);
+            String[] args = ids.split("\\,");
+            int depId = Integer.parseInt(args[1].trim());
+            int govId = Integer.parseInt(args[0].trim());
+
+            // Check *mod dependencies
+            for (int i = 0; i < modDepList.length; i++) {
+                if (kind.equals(modDepList[i]) && token.getId() == depId) {
+                    Annotation scope = (Annotation) inAnns.get(govId);
+                    String heuristic = dep.getFeatures().get("kind").toString();
+                    annotateScope(scope, trigger, heuristic);
+                }
+            }
         }
     }
 
