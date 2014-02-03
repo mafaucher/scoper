@@ -41,8 +41,11 @@ public class AdjScope extends AbstractLanguageAnalyser
     // Parameters
     protected String inputAnnotationSetName;
     protected String outputAnnotationSetName;
+    protected String sentenceAnnName;
+    protected String tokenAnnName;
     protected String triggerAnnName;
     protected String scopeAnnName;
+    protected String depAnnName;
     protected String stnAnnName;
 
     // Private attributes
@@ -59,7 +62,7 @@ public class AdjScope extends AbstractLanguageAnalyser
         AnnotationSet triggers = inAnns.get(triggerAnnName);
         for (Annotation trigger : triggers) {
             // Triggers should overlap with a token
-            Annotation token = getCoextensive(trigger, inAnns.get("Token"));
+            Annotation token = getCoextensive(trigger, inAnns.get(tokenAnnName));
             if (token == null) {
                 System.err.println("Warning: no token for trigger: "
                                   +getAnnotationText(trigger));
@@ -72,7 +75,7 @@ public class AdjScope extends AbstractLanguageAnalyser
 
     /** Annotate the scope of a given trigger */ /*
     private void nomScope(Annotation trigger) {
-        Annotation token = getCoextensive(trigger, inAnns.get("Token"));
+        Annotation token = getCoextensive(trigger, inAnns.get(tokenAnnName));
         // Get nominalizations (TODO)
         if (!filterPos(token, "NN")) return;
         // Ignore noms which already get a scope from negator
@@ -89,11 +92,10 @@ public class AdjScope extends AbstractLanguageAnalyser
 */
     /** Annotate the scope of a given trigger */
     private void adjScope(Annotation trigger) {
-        Annotation token = getCoextensive(trigger, inAnns.get("Token"));
-        // Ignore non-adjectives TODO: What about nominal modifiers?
+        Annotation token = getCoextensive(trigger, inAnns.get(tokenAnnName));
         //if (!filterPos(token, "JJ")) return;
-        // Iterate through all Dependencies TODO: Inefficient, limit by offset
-        for (Annotation dep : inAnns.get("Dependency")) {
+        // Iterate through all overlaping Dependencies
+        for (Annotation dep : getOverlaping(trigger, inAnns.get(depAnnName))) {
             String kind = dep.getFeatures().get("kind").toString().trim();
             String ids  = dep.getFeatures().get("args").toString().trim();
             ids = ids.substring(1, ids.length()-1);
@@ -157,7 +159,7 @@ public class AdjScope extends AbstractLanguageAnalyser
      * with a given category pattern. */
     /*
     private Annotation getFirstStn(Annotation trigger, String cat) {
-        Annotation token = getCoextensive(trigger, inAnns.get("Token"));
+        Annotation token = getCoextensive(trigger, inAnns.get(tokenAnnName));
         Annotation maxCat = null;
         // Get the 
         for (Annotation stn : inAnns.get(stnAnnName)) {
@@ -170,15 +172,7 @@ public class AdjScope extends AbstractLanguageAnalyser
         System.err.println("Error: problem with SyntaxTreeNodes");
         return null;*/
         /* Kept as Sample code for PQ method
-        Comparator<Annotation> comparator = new AnnotationSpanComparator();
-        PriorityQueue<Annotation> queue =
-                new PriorityQueue<Annotation>(10, comparator);
-        for (Annotation a : inAnns.get(stnAnnName)) {
-            if (trigger.withinSpanOf(a)) {
-                queue.add(a);
-            }
-        }
-        for (Annotation a : queue) {
+       for (Annotation a : queue) {
             System.out.println(a.getFeatures().get("cat"));
             System.out.println(getAnnotationText(a));
             System.out.println();
@@ -222,8 +216,11 @@ public class AdjScope extends AbstractLanguageAnalyser
         return getScope(trigger, inAnns);
     }
     private Annotation getScope(Annotation trigger, AnnotationSet alist) {
-        AnnotationSet scopes = alist.get(scopeAnnName);
-        for (Annotation scope : scopes) {
+        Annotation root = getStn(trigger, "ROOT");
+        AnnotationSet sentenceScopes = alist.get(scopeAnnName,
+                                           root.getStartNode().getOffset(),
+                                           root.getEndNode().getOffset());
+        for (Annotation scope : sentenceScopes) {
             Annotation scopeTrigger = alist.get(Integer.parseInt(
                     scope.getFeatures().get("triggerID").toString()));
             if ( scope.getFeatures().containsKey("triggerID") &&
@@ -234,9 +231,35 @@ public class AdjScope extends AbstractLanguageAnalyser
         return null;
     }
 
+    /** Get a SyntaxTreeNode of a certain category */
+    private Annotation getStn(Annotation ann, String cat) {
+        return getStn(ann, cat, inAnns);
+    }
+    private Annotation getStn(Annotation ann, String cat, AnnotationSet alist) {
+        for (Annotation a : getStnPath(ann, alist)) {
+            if (a.getFeatures().get("cat").equals(cat)) return a;
+        }
+        return null;
+    }
+
+    /** Get the SyntaxTreeNode path, from token/trigger to ROOT */
+    private PriorityQueue<Annotation> getStnPath(Annotation token) {
+        return getStnPath(token, inAnns);
+    }
+    private PriorityQueue<Annotation> getStnPath(Annotation token,
+            AnnotationSet alist) {
+        Comparator<Annotation> comparator = new AnnotationSpanComparator();
+        PriorityQueue<Annotation> queue =
+                new PriorityQueue<Annotation>(10, comparator);
+        for (Annotation a : getOverlaping(token, alist.get(stnAnnName))) {
+            queue.add(a);
+        }
+        return queue;
+    }
+
     /** Find the first coextensive annotation in a list or return null */
     private Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
-        for (Annotation a : alist) {
+        for (Annotation a : getOverlaping(ann, alist)) {
             if (ann.coextensive(a)) {
                 return a;
             }
@@ -244,24 +267,13 @@ public class AdjScope extends AbstractLanguageAnalyser
         return null;
     }
 
-    /** Find the first overlaping annotation in a list or return null */
-    private Annotation getOverlaping(Annotation ann, AnnotationSet alist) {
-        for (Annotation a : alist) {
-            if (ann.overlaps(a)) {
-                return a;
-            }
-        }
-        return null;
+    /** Find the overlaping AnnotationSet */
+    private AnnotationSet getOverlaping(Annotation ann) {
+        return getOverlaping(ann, inAnns);
     }
-
-    /** Find the first spanning annotation in a list or return null */
-    private Annotation getSpanning(Annotation ann, AnnotationSet alist) {
-        for (Annotation a : alist) {
-            if (ann.withinSpanOf(a)) {
-                return a;
-            }
-        }
-        return null;
+    private AnnotationSet getOverlaping(Annotation ann, AnnotationSet alist) {
+        return alist.get(ann.getStartNode().getOffset(),
+                         ann.getEndNode().getOffset());
     }
 
     /** Get the text of an annotation */
@@ -272,7 +284,7 @@ public class AdjScope extends AbstractLanguageAnalyser
                     annotation.getEndNode().getOffset());
         }
         catch(gate.util.InvalidOffsetException e) {
-            System.err.println("INVALID ANNOTATION OFFSET");
+            System.err.println("Error: Invalid Annotation Offsets");
             return null;
         }
     }
@@ -312,6 +324,28 @@ public class AdjScope extends AbstractLanguageAnalyser
     }
 
     @RunTime
+    @CreoleParameter(comment = "The annotation name for sentences",
+                     defaultValue = "Sentence")
+    public void setSentenceAnnName(String sentenceAnnName) {
+        this.sentenceAnnName = sentenceAnnName;
+    }
+
+    public String getSentenceAnnName() {
+        return this.sentenceAnnName;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "The annotation name for tokens",
+                     defaultValue = "Token")
+    public void setTokenAnnName(String tokenAnnName) {
+        this.tokenAnnName = tokenAnnName;
+    }
+
+    public String getTokenAnnName() {
+        return this.tokenAnnName;
+    }
+
+    @RunTime
     @CreoleParameter(comment = "The annotation name for triggers",
                      defaultValue = "Trigger")
     public void setTriggerAnnName(String triggerAnnName) {
@@ -331,6 +365,17 @@ public class AdjScope extends AbstractLanguageAnalyser
 
     public String getScopeAnnName() {
         return this.scopeAnnName;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "The annotation name for deps",
+                     defaultValue = "Dependency")
+    public void setDepAnnName(String depAnnName) {
+        this.depAnnName = depAnnName;
+    }
+
+    public String getDepAnnName() {
+        return this.depAnnName;
     }
 
     @RunTime
