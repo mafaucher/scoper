@@ -34,7 +34,7 @@ public class AdjScope extends AbstractLanguageAnalyser
         implements ProcessingResource {
 
     private static String[] modDepList = {
-            "amod", "rcmod", "quantmod", "infmod", "partmod" };
+            "amod", "advmod", "rcmod", "quantmod", "infmod", "partmod" };
     //Unsure: advcl, mark, num, number, nn, appos, discourse, advmod, npadvmod,
     // mwe, det, predet, preconj, poss, possessive, prep, prt, goeswith
     // JJ*, VBP
@@ -48,6 +48,8 @@ public class AdjScope extends AbstractLanguageAnalyser
     // Private attributes
     private AnnotationSet inAnns;
     private AnnotationSet outAnns;
+    private AnnotationSet tmpAnns;
+
     public void execute() throws ExecutionException {
         inAnns = document.getAnnotations(inputAnnotationSetName);
         outAnns = document.getAnnotations(outputAnnotationSetName);
@@ -89,7 +91,7 @@ public class AdjScope extends AbstractLanguageAnalyser
     private void adjScope(Annotation trigger) {
         Annotation token = getCoextensive(trigger, inAnns.get("Token"));
         // Ignore non-adjectives TODO: What about nominal modifiers?
-        if (!filterPos(token, "JJ")) return;
+        //if (!filterPos(token, "JJ")) return;
         // Iterate through all Dependencies TODO: Inefficient, limit by offset
         for (Annotation dep : inAnns.get("Dependency")) {
             String kind = dep.getFeatures().get("kind").toString().trim();
@@ -103,19 +105,24 @@ public class AdjScope extends AbstractLanguageAnalyser
             for (int i = 0; i < modDepList.length; i++) {
                 if (kind.equals(modDepList[i]) && token.getId() == depId) {
                     Annotation scope = (Annotation) inAnns.get(govId);
-                    String heuristic = "adj-"+dep.getFeatures().get("kind").toString();
-                    annotateScope(scope, trigger, heuristic);
+                    String heuristic = dep.getFeatures().get("kind").toString();
+                    String source = "";
+                    if (trigger.getFeatures().get("source") != null) {
+                        source = trigger.getFeatures().get("source").toString();
+                    }
+                    annotateScope(scope, trigger, heuristic, source);
                 }
             }
         }
     }
 
     /** Wrapper which uses single annotation as the scope */
-    private void annotateScope(Annotation scope, Annotation trigger, String heuristic) {
+    private void annotateScope(Annotation scope, Annotation trigger,
+            String heuristic, String source) {
         try {
             Long startOffset = scope.getStartNode().getOffset();
             Long endOffset   = scope.getEndNode().getOffset();
-            annotateScope(startOffset, endOffset, trigger, heuristic);
+            annotateScope(startOffset, endOffset, trigger, heuristic, source);
         } catch (InvalidOffsetException e) {
             System.out.println("Error: invalid scope offsets.");
             e.printStackTrace();
@@ -123,7 +130,7 @@ public class AdjScope extends AbstractLanguageAnalyser
     }
     /** Standard function for creating scope annotation and features */
     private void annotateScope(Long startOffset, Long endOffset,
-            Annotation trigger, String heuristic)
+            Annotation trigger, String heuristic, String source)
             throws InvalidOffsetException {
         // If scope already exists issue a warning
         Annotation scope = getScope(trigger);
@@ -139,8 +146,9 @@ public class AdjScope extends AbstractLanguageAnalyser
         // Otherwise annotate scope
         } else {
             FeatureMap fm = gate.Factory.newFeatureMap();
-            fm.put("heuristic", heuristic);
             fm.put("triggerID", trigger.getId());
+            fm.put("heuristic", heuristic);
+            fm.put("source", source);
             outAnns.add(startOffset, endOffset, scopeAnnName, fm);
         }
     }
