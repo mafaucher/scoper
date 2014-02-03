@@ -35,14 +35,19 @@ public class AdjScope extends AbstractLanguageAnalyser
 
     private static String[] modDepList = {
             "amod", "rcmod", "quantmod", "infmod", "partmod" };
-
+    //Unsure: advcl, mark, num, number, nn, appos, discourse, advmod, npadvmod,
+    // mwe, det, predet, preconj, poss, possessive, prep, prt, goeswith
+    // JJ*, VBP
+    // Parameters
     protected String inputAnnotationSetName;
     protected String outputAnnotationSetName;
-    private AnnotationSet inAnns;
-    private AnnotationSet outAnns;
     protected String triggerAnnName;
     protected String scopeAnnName;
+    protected String stnAnnName;
 
+    // Private attributes
+    private AnnotationSet inAnns;
+    private AnnotationSet outAnns;
     public void execute() throws ExecutionException {
         inAnns = document.getAnnotations(inputAnnotationSetName);
         outAnns = document.getAnnotations(outputAnnotationSetName);
@@ -63,31 +68,23 @@ public class AdjScope extends AbstractLanguageAnalyser
         }
     }
 
-    /** Annotate the scope of a given trigger */
+    /** Annotate the scope of a given trigger */ /*
     private void nomScope(Annotation trigger) {
         Annotation token = getCoextensive(trigger, inAnns.get("Token"));
         // Get nominalizations (TODO)
         if (!filterPos(token, "NN")) return;
+        // Ignore noms which already get a scope from negator
+        if (getScope(trigger) != null) return;
         // Iterate through all Dependencies TODO: Inefficient, limit by offset
-        for (Annotation dep : inAnns.get("Dependency")) {
-            String kind = dep.getFeatures().get("kind").toString().trim();
-            String ids  = dep.getFeatures().get("args").toString().trim();
-            ids = ids.substring(1, ids.length()-1);
-            String[] args = ids.split("\\,");
-            int depId = Integer.parseInt(args[1].trim());
-            int govId = Integer.parseInt(args[0].trim());
-
-            // Check *mod dependencies
-            for (int i = 0; i < modDepList.length; i++) {
-                if (kind.equals(modDepList[i]) && token.getId() == depId) {
-                    Annotation scope = (Annotation) inAnns.get(govId);
-                    String heuristic = dep.getFeatures().get("kind").toString();
-                    annotateScope(scope, trigger, heuristic);
-                }
-            }
+        Annotation scope = getMaxCat(trigger, "N");
+        if (scope == null) {
+            System.err.println("Warning: no scope for nominalization");
+            return;
         }
+        String heuristic = "nom-premod";
+        annotateScope(scope, trigger, heuristic);
     }
-
+*/
     /** Annotate the scope of a given trigger */
     private void adjScope(Annotation trigger) {
         Annotation token = getCoextensive(trigger, inAnns.get("Token"));
@@ -106,7 +103,7 @@ public class AdjScope extends AbstractLanguageAnalyser
             for (int i = 0; i < modDepList.length; i++) {
                 if (kind.equals(modDepList[i]) && token.getId() == depId) {
                     Annotation scope = (Annotation) inAnns.get(govId);
-                    String heuristic = dep.getFeatures().get("kind").toString();
+                    String heuristic = "adj-"+dep.getFeatures().get("kind").toString();
                     annotateScope(scope, trigger, heuristic);
                 }
             }
@@ -148,12 +145,65 @@ public class AdjScope extends AbstractLanguageAnalyser
         }
     }
 
-    /** Returns true iff token's POS matches given POS. */
+    /** Get the smallest STN gov including a trigger,
+     * with a given category pattern. */
+    /*
+    private Annotation getFirstStn(Annotation trigger, String cat) {
+        Annotation token = getCoextensive(trigger, inAnns.get("Token"));
+        Annotation maxCat = null;
+        // Get the 
+        for (Annotation stn : inAnns.get(stnAnnName)) {
+            if (filterPos(stn, cat, "cat")) {
+                if (maxCat == null) {
+                    maxCat = stn;
+                } else if (false) {
+            }
+        }}
+        System.err.println("Error: problem with SyntaxTreeNodes");
+        return null;*/
+        /* Kept as Sample code for PQ method
+        Comparator<Annotation> comparator = new AnnotationSpanComparator();
+        PriorityQueue<Annotation> queue =
+                new PriorityQueue<Annotation>(10, comparator);
+        for (Annotation a : inAnns.get(stnAnnName)) {
+            if (trigger.withinSpanOf(a)) {
+                queue.add(a);
+            }
+        }
+        for (Annotation a : queue) {
+            System.out.println(a.getFeatures().get("cat"));
+            System.out.println(getAnnotationText(a));
+            System.out.println();
+            if (filterPos(a, cat, "cat")) {
+                maxCat = a;
+            } else {
+                return maxCat;
+            }
+        }
+        */
+    //}
+
+    /** Returns true iff token's POS matches given POS.
+     * @param   token  Annotation with a part-of-speech category.
+     * @param   pos    The desired part-of-speech pattern.
+     * @param   strict (optional) whether to match the 'pos' pattern exactly,
+     *                 default is false.
+     * @param   cat    (optional) the feature name for the category,
+     *                 default is "category".
+     * @return  Whether the annotation has the right part-of-speech
+     * */
     private boolean filterPos(Annotation token, String pos) {
-        return filterPos(token, pos, false);
+        return filterPos(token, pos, false, "category");
+    }
+    private boolean filterPos(Annotation token, String pos, String cat) {
+        return filterPos(token, pos, false, cat);
     }
     private boolean filterPos(Annotation token, String pos, boolean strict) {
-        String tokenPos = token.getFeatures().get("category").toString();
+        return filterPos(token, pos, strict, "category");
+    }
+    private boolean filterPos(Annotation token, String pos,
+                              boolean strict, String cat) {
+        String tokenPos = token.getFeatures().get(cat).toString();
         if (strict) return tokenPos.equals(pos);
         return ( tokenPos.length() >= pos.length() &&
                  tokenPos.substring(0, pos.length()).equals(pos) );
@@ -254,7 +304,8 @@ public class AdjScope extends AbstractLanguageAnalyser
     }
 
     @RunTime
-    @CreoleParameter(comment = "The annotation name for triggers", defaultValue="Trigger")
+    @CreoleParameter(comment = "The annotation name for triggers",
+                     defaultValue = "Trigger")
     public void setTriggerAnnName(String triggerAnnName) {
         this.triggerAnnName = triggerAnnName;
     }
@@ -264,13 +315,25 @@ public class AdjScope extends AbstractLanguageAnalyser
     }
 
     @RunTime
-    @CreoleParameter(comment = "The annotation name for scopes", defaultValue="Scope")
+    @CreoleParameter(comment = "The annotation name for scopes",
+                     defaultValue = "Scope")
     public void setScopeAnnName(String scopeAnnName) {
         this.scopeAnnName = scopeAnnName;
     }
 
     public String getScopeAnnName() {
         return this.scopeAnnName;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "The annotation name for stns",
+                     defaultValue = "SyntaxTreeNode")
+    public void setStnAnnName(String stnAnnName) {
+        this.stnAnnName = stnAnnName;
+    }
+
+    public String getStnAnnName() {
+        return this.stnAnnName;
     }
 
     @RunTime
