@@ -1,5 +1,5 @@
 /*
- *  AdjScope.java
+ *  Scoper.java
  *
  * Copyright (c) 2000-2012, The University of Sheffield.
  *
@@ -28,9 +28,9 @@ import gate.util.*;
 /**
  * This class is the implementation of the resource SCOPEEXPORTER.
  */
-@CreoleResource(name = "AdjScope",
+@CreoleResource(name = "Scoper",
         comment = "Annotates Scope of Adjectives from a Trigger List")
-public class AdjScope extends AbstractLanguageAnalyser
+public class Scoper extends AbstractLanguageAnalyser
         implements ProcessingResource {
 
     private static String[] modDepList = {
@@ -268,9 +268,6 @@ public class AdjScope extends AbstractLanguageAnalyser
     }
 
     /** Find the overlaping AnnotationSet */
-    private AnnotationSet getOverlaping(Annotation ann) {
-        return getOverlaping(ann, inAnns);
-    }
     private AnnotationSet getOverlaping(Annotation ann, AnnotationSet alist) {
         return alist.get(ann.getStartNode().getOffset(),
                          ann.getEndNode().getOffset());

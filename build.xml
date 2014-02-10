@@ -1,6 +1,6 @@
 <!--======================================================================
 
-   Build file for AdjScope
+   Build file for Scoper
 
    This file will allow you to build your plugin with Ant.  If you do not
    have an Ant installation of your own, you can use the one supplied with
@@ -15,7 +15,7 @@
    where {gate.home} is the directory in which GATE was installed.
 
 =======================================================================-->
-<project name="AdjScope" basedir="." default="all">
+<project name="Scoper" basedir="." default="all">
 
   <property file="build.properties" />
 
@@ -27,7 +27,7 @@
   ========================================================-->
 
   <!-- Name of the plugin -->
-  <property name="plugin.name" value="AdjScope"/>
+  <property name="plugin.name" value="Scoper"/>
 
   <!-- Make environment variables available -->
   <property environment="env" />

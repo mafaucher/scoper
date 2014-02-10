@@ -3,6 +3,8 @@ package clac.creole.scope;
 import java.util.Comparator;
 import gate.Annotation;
 
+/** Comparator used to order annotations by span.
+ * a1 < a2 iff the span of a1 is shorter than the span of a2 */
 public class AnnotationSpanComparator
         implements Comparator<Annotation> {
     @Override
