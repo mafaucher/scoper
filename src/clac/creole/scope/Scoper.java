@@ -41,18 +41,44 @@ public class Scoper extends AbstractLanguageAnalyser
     protected String sentenceAnnName;
     protected String triggerAnnName;
 
-    // Constants
-    public static final String TRIGGER_ANNOTATION_TYPE = "Trigger";
-    public static final String SCOPE_ANNOTATION_TYPE = "Scope";
+    // Private attributes
+    private AnnotationSet inAnns;
+    private AnnotationSet outAnns;
+
+    /// CONSTANTS ///
+
+    // Trigger
+    public static final String TRIGGER_ANNOTATION_TYPE    = "Trigger";
+    public static final String TRIGGER_SOURCE_FEATURE     = "source";
+    public static final String TRIGGER_POLARITY_FEATURE   = "priorpolarity";
+    public static final String TRIGGER_SCORE_FEATURE      = "sentimentScore"; //TODO
+    public static final String TRIGGER_SCOPEID_FEATURE    = "scopeID"; //TODO
+
+    // Scope
+    public static final String SCOPE_ANNOTATION_TYPE      = "Scope";
+    public static final String SCOPE_HEURISTIC_FEATURE    = "heuristic";
+    public static final String SCOPE_TYPE_FEATURE         = "type"; //TODO
+    public static final String SCOPE_TRIGGERID_FEATURE    = "triggerID";
+
+    // Token
+    public static final String TOKEN_ANNOTATION_TYPE      = ANNIEConstants.TOKEN_ANNOTATION_TYPE;
+    public static final String TOKEN_CATEGORY_FEATURE     = ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
+
+    // Phrase (SyntaxTreeNode)
+    public static final String PHRASE_ANNOTATION_TYPE     = Parser.PHRASE_ANNOTATION_TYPE;
+    public static final String PHRASE_CATEGORY_FEATURE    = Parser.PHRASE_CAT_FEATURE;
+
+    // Dependency
+    public static final String DEPENDENCY_ANNOTATION_TYPE = Parser.DEPENDENCY_ANNOTATION_TYPE;
+    public static final String DEPENDENCY_ARG_FEATURE     = Parser.DEPENDENCY_ARG_FEATURE;
+    public static final String DEPENDENCY_LABEL_FEATURE   = Parser.DEPENDENCY_LABEL_FEATURE;
+
     public static final String[] MOD_DEPENDENCIES = {
             "amod", "advmod", "rcmod", "quantmod", "infmod", "partmod" };
     //Unsure: advcl, mark, num, number, nn, appos, discourse, advmod, npadvmod,
     // mwe, det, predet, preconj, poss, possessive, prep, prt, goeswith
     // JJ*, VBP
 
-    // Private attributes
-    private AnnotationSet inAnns;
-    private AnnotationSet outAnns;
 
     public void execute() throws ExecutionException {
         inAnns = document.getAnnotations(inputAnnotationSetName);
@@ -62,23 +88,18 @@ public class Scoper extends AbstractLanguageAnalyser
         }
         AnnotationSet triggers = inAnns.get(triggerAnnName);
         for (Annotation trigger : triggers) {
-            // Triggers should overlap with a token
-            Annotation token = getCoextensive(trigger,
-                    inAnns.get(ANNIEConstants.TOKEN_ANNOTATION_TYPE));
-            if (token == null) {
-                System.err.println("Warning: no token for trigger: "
-                                  +getAnnotationText(trigger));
-                continue;
+            Annotation token = getToken(trigger);
+            if (token != null) {
+                adjScope(trigger);
+                //nomScope(trigger);
             }
-            adjScope(trigger);
-            //nomScope(trigger);
         }
     }
 
     /** Annotate the scope of a given trigger */ /*
     private void nomScope(Annotation trigger) {
         Annotation token = getCoextensive(trigger,
-                inAnns.get(ANNIEConstants.TOKEN_ANNOTATION_TYPE));
+                inAnns.get(TOKEN_ANNOTATION_TYPE));
         // Get nominalizations (TODO)
         if (!filterPos(token, "NN")) return;
         // Ignore noms which already get a scope from negator
@@ -95,12 +116,12 @@ public class Scoper extends AbstractLanguageAnalyser
 */
     /** Annotate the scope of a given trigger */
     private void adjScope(Annotation trigger) {
-        Annotation token = getCoextensive(trigger, inAnns.get(ANNIEConstants.TOKEN_ANNOTATION_TYPE));
+        Annotation token = getCoextensive(trigger, inAnns.get(TOKEN_ANNOTATION_TYPE));
         //if (!filterPos(token, "JJ")) return;
         // Iterate through all overlaping Dependencies
-        for (Annotation dep : getOverlaping(trigger, inAnns.get(Parser.DEPENDENCY_ANNOTATION_TYPE))) {
-            String kind = dep.getFeatures().get("kind").toString().trim();
-            String ids  = dep.getFeatures().get("args").toString().trim();
+        for (Annotation dep : getOverlaping(trigger, inAnns.get(DEPENDENCY_ANNOTATION_TYPE))) {
+            String kind = dep.getFeatures().get(DEPENDENCY_LABEL_FEATURE).toString().trim();
+            String ids  = dep.getFeatures().get(DEPENDENCY_ARG_FEATURE).toString().trim();
             ids = ids.substring(1, ids.length()-1);
             String[] args = ids.split("\\,");
             int depId = Integer.parseInt(args[1].trim());
@@ -110,10 +131,10 @@ public class Scoper extends AbstractLanguageAnalyser
             for (int i = 0; i < MOD_DEPENDENCIES.length; i++) {
                 if (kind.equals(MOD_DEPENDENCIES[i]) && token.getId() == depId) {
                     Annotation scope = (Annotation) inAnns.get(govId);
-                    String heuristic = dep.getFeatures().get("kind").toString();
+                    String heuristic = dep.getFeatures().get(DEPENDENCY_LABEL_FEATURE).toString();
                     String source = "";
-                    if (trigger.getFeatures().get("source") != null) {
-                        source = trigger.getFeatures().get("source").toString();
+                    if (trigger.getFeatures().get(TRIGGER_SOURCE_FEATURE) != null) {
+                        source = trigger.getFeatures().get(TRIGGER_SOURCE_FEATURE).toString();
                     }
                     annotateScope(scope, trigger, heuristic, source);
                 }
@@ -144,16 +165,16 @@ public class Scoper extends AbstractLanguageAnalyser
                     startOffset, endOffset).toString();
             System.err.println("Warning: Multiple scopes detected for trigger:");
             System.err.println("OLD: "+getAnnotationText(trigger)+"' -> ("
-                              +scope.getFeatures().get("heuristic")+") "
+                              +scope.getFeatures().get(SCOPE_HEURISTIC_FEATURE)+") "
                               +getAnnotationText(scope));
             System.err.println("NEW: "+getAnnotationText(trigger)+"' -> ("
                               +heuristic+") "+newScope);
         // Otherwise annotate scope
         } else {
             FeatureMap fm = gate.Factory.newFeatureMap();
-            fm.put("triggerID", trigger.getId());
-            fm.put("heuristic", heuristic);
-            fm.put("source", source);
+            fm.put(SCOPE_TRIGGERID_FEATURE, trigger.getId());
+            fm.put(SCOPE_HEURISTIC_FEATURE, heuristic);
+            fm.put(TRIGGER_SOURCE_FEATURE, source);
             outAnns.add(startOffset, endOffset, SCOPE_ANNOTATION_TYPE, fm);
         }
     }
@@ -162,11 +183,11 @@ public class Scoper extends AbstractLanguageAnalyser
      * with a given category pattern. */
     /*
     private Annotation getFirstStn(Annotation trigger, String cat) {
-        Annotation token = getCoextensive(trigger, inAnns.get(ANNIEConstants.TOKEN_ANNOTATION_TYPE));
+        Annotation token = getCoextensive(trigger, inAnns.get(TOKEN_ANNOTATION_TYPE));
         Annotation maxCat = null;
         // Get the 
-        for (Annotation stn : inAnns.get(Parser.PHRASE_ANNOTATION_TYPE)) {
-            if (filterPos(stn, cat, Parser.PHRASE_CAT_FEATURE)) {
+        for (Annotation stn : inAnns.get(PHRASE_ANNOTATION_TYPE)) {
+            if (filterPos(stn, cat, PHRASE_CATEGORY_FEATURE)) {
                 if (maxCat == null) {
                     maxCat = stn;
                 } else if (false) {
@@ -176,10 +197,10 @@ public class Scoper extends AbstractLanguageAnalyser
         return null;*/
         /* Kept as Sample code for PQ method
        for (Annotation a : queue) {
-            System.out.println(a.getFeatures().get(Parser.PHRASE_CAT_FEATURE));
+            System.out.println(a.getFeatures().get(PHRASE_CATEGORY_FEATURE));
             System.out.println(getAnnotationText(a));
             System.out.println();
-            if (filterPos(a, cat, Parser.PHRASE_CAT_FEATURE)) {
+            if (filterPos(a, cat, PHRASE_CATEGORY_FEATURE)) {
                 maxCat = a;
             } else {
                 return maxCat;
@@ -214,30 +235,12 @@ public class Scoper extends AbstractLanguageAnalyser
                  tokenPos.substring(0, pos.length()).equals(pos) );
     }
 
-    /** Find the scope which corresponds to this trigger or token */
-    public static Annotation getScope(Annotation trigger, AnnotationSet alist) {
-        Annotation root = getStn(trigger, "ROOT", alist);
-        AnnotationSet sentenceScopes = alist.get(SCOPE_ANNOTATION_TYPE,
-                                           root.getStartNode().getOffset(),
-                                           root.getEndNode().getOffset());
-        for (Annotation scope : sentenceScopes) {
-            Annotation scopeTrigger = alist.get(Integer.parseInt(
-                    scope.getFeatures().get("triggerID").toString()));
-            if ( scope.getFeatures().containsKey("triggerID") &&
-                    trigger.coextensive(scopeTrigger) ) {
-                return scope;
-            }
-        }
-        return null;
-    }
-    private Annotation getScope(Annotation trigger) {
-        return getScope(trigger, inAnns);
-    }
-
     /** Get a SyntaxTreeNode of a certain category including an annotation */
     public static Annotation getStn(Annotation ann, String cat, AnnotationSet alist) {
         for (Annotation a : getStnPath(ann, alist)) {
-            if (a.getFeatures().get(Parser.PHRASE_CAT_FEATURE).equals(cat)) return a;
+            if (a.getFeatures().get(PHRASE_CATEGORY_FEATURE).equals(cat)) {
+                return a;
+            }
         }
         return null;
     }
@@ -246,6 +249,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Get the SyntaxTreeNode path, from token/trigger to ROOT */
+    // TODO: Convert this to getPath(token, "stn") to allow reuse with scopes
     private PriorityQueue<Annotation> getStnPath(Annotation token) {
         return getStnPath(token, inAnns);
     }
@@ -254,10 +258,31 @@ public class Scoper extends AbstractLanguageAnalyser
         Comparator<Annotation> comparator = new AnnotationSpanComparator();
         PriorityQueue<Annotation> queue =
                 new PriorityQueue<Annotation>(10, comparator);
-        for (Annotation a : getOverlaping(token, alist.get(Parser.PHRASE_ANNOTATION_TYPE))) {
+        for (Annotation a : getOverlaping(token, alist.get(PHRASE_ANNOTATION_TYPE))) {
             queue.add(a);
         }
         return queue;
+    }
+
+    /** Find the scope which corresponds to this trigger or token */
+    // TODO: Make triggers point to their scope to speed this up (change negator format)
+    public static Annotation getScope(Annotation trigger, AnnotationSet alist) {
+        Annotation root = getStn(trigger, "ROOT", alist);
+        AnnotationSet sentenceScopes = alist.get(SCOPE_ANNOTATION_TYPE,
+                                           root.getStartNode().getOffset(),
+                                           root.getEndNode().getOffset());
+        for (Annotation scope : sentenceScopes) {
+            Annotation scopeTrigger = alist.get(Integer.parseInt(
+                    scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
+            if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) &&
+                    trigger.coextensive(scopeTrigger) ) {
+                return scope;
+            }
+        }
+        return null;
+    }
+    private Annotation getScope(Annotation trigger) {
+        return getScope(trigger, inAnns);
     }
 
     /** Get the Sentence for this token/trigger */
@@ -270,6 +295,18 @@ public class Scoper extends AbstractLanguageAnalyser
     }
     private Annotation getSentence(Annotation token) {
         return getSentence(token, inAnns, sentenceAnnName);
+    }
+
+    /** Find the token which corresponds to this trigger */
+    public static Annotation getToken(Annotation trigger, AnnotationSet alist) {
+        Annotation token = getCoextensive(trigger, alist.get(TOKEN_ANNOTATION_TYPE));
+        if (token == null) {
+            System.err.println("Warning: no token for trigger");
+        }
+        return token;
+    }
+    private Annotation getToken(Annotation trigger) {
+        return getToken(trigger, inAnns);
     }
 
     /** Find the first coextensive annotation in a list or return null */
@@ -313,7 +350,7 @@ public class Scoper extends AbstractLanguageAnalyser
 
     @Optional
     @RunTime
-    @CreoleParameter(comment = "The annotation set name")
+    @CreoleParameter(comment = "The input annotation set name")
     public void setInputAnnotationSetName(String inputAnnotationSetName) {
         this.inputAnnotationSetName = inputAnnotationSetName;
         this.inAnns = document.getAnnotations(inputAnnotationSetName);
@@ -325,7 +362,7 @@ public class Scoper extends AbstractLanguageAnalyser
 
     @Optional
     @RunTime
-    @CreoleParameter(comment = "The annotation set name for the output annotations")
+    @CreoleParameter(comment = "The output annotation set name")
     public void setOutputAnnotationSetName(String outputAnnotationSetName) {
         this.outputAnnotationSetName = outputAnnotationSetName;
         this.outAnns = document.getAnnotations(outputAnnotationSetName);
