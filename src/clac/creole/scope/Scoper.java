@@ -73,51 +73,48 @@ public class Scoper extends AbstractLanguageAnalyser
     public static final String DEPENDENCY_ARG_FEATURE     = Parser.DEPENDENCY_ARG_FEATURE;
     public static final String DEPENDENCY_LABEL_FEATURE   = Parser.DEPENDENCY_LABEL_FEATURE;
 
-    public static final String[] MOD_DEPENDENCIES = {
-            "amod", "advmod", "rcmod", "quantmod", "infmod", "partmod" };
+    public static final String[] MOD_DEPENDENCIES =
+            { "amod", "advmod", "rcmod", "quantmod", "infmod", "partmod" };
     //Unsure: advcl, mark, num, number, nn, appos, discourse, advmod, npadvmod,
     // mwe, det, predet, preconj, poss, possessive, prep, prt, goeswith
     // JJ*, VBP
 
-
+    /** Execute PR over a single document */
     public void execute() throws ExecutionException {
+
         inAnns = document.getAnnotations(inputAnnotationSetName);
         outAnns = document.getAnnotations(outputAnnotationSetName);
+
         if (document == null) {
             throw new GateRuntimeException("No document to process!");
         }
+
+        // Attempt to find scope for all triggers
         AnnotationSet triggers = inAnns.get(triggerAnnName);
         for (Annotation trigger : triggers) {
             Annotation token = getToken(trigger);
             if (token != null) {
-                adjScope(trigger);
+                modScope(trigger);
                 //nomScope(trigger);
             }
         }
     }
 
-    /** Annotate the scope of a given trigger */ /*
-    private void nomScope(Annotation trigger) {
-        Annotation token = getCoextensive(trigger,
-                inAnns.get(TOKEN_ANNOTATION_TYPE));
-        // Get nominalizations (TODO)
-        if (!filterPos(token, "NN")) return;
-        // Ignore noms which already get a scope from negator
-        if (getScope(trigger) != null) return;
-        // Iterate through all Dependencies TODO: Inefficient, limit by offset
-        Annotation scope = getMaxCat(trigger, "N");
-        if (scope == null) {
-            System.err.println("Warning: no scope for nominalization");
-            return;
-        }
-        String heuristic = "nom-premod";
-        annotateScope(scope, trigger, heuristic);
+    /** Initialize the resource. */
+    public Resource init() throws ResourceInstantiationException {
+
+        super.init();
+        return this;
     }
-*/
-    /** Annotate the scope of a given trigger */
-    private void adjScope(Annotation trigger) {
+
+    @Override
+    public void reInit() throws ResourceInstantiationException {
+        init();
+    }
+
+    /** Annotate the scope of a modifier */
+    private void modScope(Annotation trigger) {
         Annotation token = getCoextensive(trigger, inAnns.get(TOKEN_ANNOTATION_TYPE));
-        //if (!filterPos(token, "JJ")) return;
         // Iterate through all overlaping Dependencies
         for (Annotation dep : getOverlaping(trigger, inAnns.get(DEPENDENCY_ANNOTATION_TYPE))) {
             String kind = dep.getFeatures().get(DEPENDENCY_LABEL_FEATURE).toString().trim();
@@ -142,18 +139,26 @@ public class Scoper extends AbstractLanguageAnalyser
         }
     }
 
-    /** Wrapper which uses single annotation as the scope */
-    private void annotateScope(Annotation scope, Annotation trigger,
-            String heuristic, String source) {
-        try {
-            Long startOffset = scope.getStartNode().getOffset();
-            Long endOffset   = scope.getEndNode().getOffset();
-            annotateScope(startOffset, endOffset, trigger, heuristic, source);
-        } catch (InvalidOffsetException e) {
-            System.out.println("Error: invalid scope offsets.");
-            e.printStackTrace();
+    /** Annotate the scope of a given trigger */
+    /*
+    private void nomScope(Annotation trigger) {
+        Annotation token = getCoextensive(trigger,
+                inAnns.get(TOKEN_ANNOTATION_TYPE));
+        // Get nominalizations (TODO)
+        if (!filterPos(token, "NN")) return;
+        // Ignore noms which already get a scope from negator
+        if (getScope(trigger) != null) return;
+        // Iterate through all Dependencies TODO: Inefficient, limit by offset
+        Annotation scope = getMaxCat(trigger, "N");
+        if (scope == null) {
+            System.err.println("Warning: no scope for nominalization");
+            return;
         }
+        String heuristic = "nom-premod";
+        annotateScope(scope, trigger, heuristic);
     }
+    */
+
     /** Standard function for creating scope annotation and features */
     private void annotateScope(Long startOffset, Long endOffset,
             Annotation trigger, String heuristic, String source)
@@ -164,10 +169,10 @@ public class Scoper extends AbstractLanguageAnalyser
             String newScope = this.getDocument().getContent().getContent(
                     startOffset, endOffset).toString();
             System.err.println("Warning: Multiple scopes detected for trigger:");
-            System.err.println("OLD: "+getAnnotationText(trigger)+"' -> ("
+            System.err.println("    OLD: "+getAnnotationText(trigger)+" -> ("
                               +scope.getFeatures().get(SCOPE_HEURISTIC_FEATURE)+") "
                               +getAnnotationText(scope));
-            System.err.println("NEW: "+getAnnotationText(trigger)+"' -> ("
+            System.err.println("    NEW: "+getAnnotationText(trigger)+" -> ("
                               +heuristic+") "+newScope);
         // Otherwise annotate scope
         } else {
@@ -178,7 +183,20 @@ public class Scoper extends AbstractLanguageAnalyser
             outAnns.add(startOffset, endOffset, SCOPE_ANNOTATION_TYPE, fm);
         }
     }
+    /** Annotates scope from the offsets of an annotation */
+    private void annotateScope(Annotation scope, Annotation trigger,
+            String heuristic, String source) {
+        try {
+            Long startOffset = scope.getStartNode().getOffset();
+            Long endOffset   = scope.getEndNode().getOffset();
+            annotateScope(startOffset, endOffset, trigger, heuristic, source);
+        } catch (InvalidOffsetException e) {
+            System.err.println("Error: invalid scope offsets.");
+            e.printStackTrace();
+        }
+    }
 
+    // FIXME: This needs a lot of work...
     /** Get the smallest STN gov including a trigger,
      * with a given category pattern. */
     /*
@@ -268,15 +286,17 @@ public class Scoper extends AbstractLanguageAnalyser
     // TODO: Make triggers point to their scope to speed this up (change negator format)
     public static Annotation getScope(Annotation trigger, AnnotationSet alist) {
         Annotation root = getStn(trigger, "ROOT", alist);
-        AnnotationSet sentenceScopes = alist.get(SCOPE_ANNOTATION_TYPE,
-                                           root.getStartNode().getOffset(),
-                                           root.getEndNode().getOffset());
-        for (Annotation scope : sentenceScopes) {
-            Annotation scopeTrigger = alist.get(Integer.parseInt(
-                    scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
-            if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) &&
-                    trigger.coextensive(scopeTrigger) ) {
-                return scope;
+        if (root != null) {
+            AnnotationSet sentenceScopes = alist.get(SCOPE_ANNOTATION_TYPE,
+                                               root.getStartNode().getOffset(),
+                                               root.getEndNode().getOffset());
+            for (Annotation scope : sentenceScopes) {
+                Annotation scopeTrigger = alist.get(Integer.parseInt(
+                        scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
+                if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) &&
+                        trigger.coextensive(scopeTrigger) ) {
+                    return scope;
+                }
             }
         }
         return null;
@@ -336,16 +356,6 @@ public class Scoper extends AbstractLanguageAnalyser
             System.err.println("Error: Invalid Annotation Offsets");
             return null;
         }
-    }
-
-    /** Initialize the resource. */
-    public Resource init() throws ResourceInstantiationException {
-        super.init();
-        return this;
-    }
-    @Override
-    public void reInit() throws ResourceInstantiationException {
-        init();
     }
 
     @Optional

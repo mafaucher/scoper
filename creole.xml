@@ -4,9 +4,9 @@
 <!--
 This file just references the JAR file that contains the compiled resource.
 Configuration is contained in the @CreoleResource annotation on 
-clac.creole.adjScope.Scoper
+clac.creole.scope.Scoper
 -->
 
 <CREOLE-DIRECTORY>
-  <JAR SCAN="true">Scoper.jar</JAR>
+    <JAR SCAN="true">Scoper.jar</JAR>
 </CREOLE-DIRECTORY>
