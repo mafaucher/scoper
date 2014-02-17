@@ -74,10 +74,12 @@ public class Scoper extends AbstractLanguageAnalyser
     public static final String DEPENDENCY_LABEL_FEATURE   = Parser.DEPENDENCY_LABEL_FEATURE;
 
     public static final String[] MOD_DEPENDENCIES =
-            { "amod", "advmod", "rcmod", "quantmod", "infmod", "partmod" };
+            { "amod", "rcmod", "quantmod", "infmod", "partmod" };
     //Unsure: advcl, mark, num, number, nn, appos, discourse, advmod, npadvmod,
     // mwe, det, predet, preconj, poss, possessive, prep, prt, goeswith
-    // JJ*, VBP
+
+    public static final String[] COP_DEPENDENCIES = { "cop", "auxpass" };
+    public static final String[] SUBJ_DEPENDENCIES = { "nsubj" };
 
     /** Execute PR over a single document */
     public void execute() throws ExecutionException {
@@ -94,7 +96,9 @@ public class Scoper extends AbstractLanguageAnalyser
         for (Annotation trigger : triggers) {
             Annotation token = getToken(trigger);
             if (token != null) {
-                modScope(trigger);
+                List<ScoperDependency> deps = getDependencies(trigger);
+                modScope(trigger, deps);
+                copsubjScope(trigger, deps);
                 //nomScope(trigger);
             }
         }
@@ -102,7 +106,6 @@ public class Scoper extends AbstractLanguageAnalyser
 
     /** Initialize the resource. */
     public Resource init() throws ResourceInstantiationException {
-
         super.init();
         return this;
     }
@@ -112,56 +115,84 @@ public class Scoper extends AbstractLanguageAnalyser
         init();
     }
 
-    /** Annotate the scope of a modifier */
-    private void modScope(Annotation trigger) {
-        Annotation token = getCoextensive(trigger, inAnns.get(TOKEN_ANNOTATION_TYPE));
-        // Iterate through all overlaping Dependencies
-        for (Annotation dep : getOverlaping(trigger, inAnns.get(DEPENDENCY_ANNOTATION_TYPE))) {
-            String kind = dep.getFeatures().get(DEPENDENCY_LABEL_FEATURE).toString().trim();
-            String ids  = dep.getFeatures().get(DEPENDENCY_ARG_FEATURE).toString().trim();
-            ids = ids.substring(1, ids.length()-1);
-            String[] args = ids.split("\\,");
-            int depId = Integer.parseInt(args[1].trim());
-            int govId = Integer.parseInt(args[0].trim());
+    /** Annotate the scope of a modifier with a copula.
+     * e.g. cop(X) ^ nsubj(Y) ^ scope(Y)
+     */
+    private void copsubjScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        List<ScoperDependency> copDeps = getDependencies(dependencies, COP_DEPENDENCIES);
+        if (copDeps == null || copDeps.isEmpty()) return;
+        List<ScoperDependency> scopeDeps = getDependencies(dependencies, SUBJ_DEPENDENCIES);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        Annotation scope = getPhrase(scopeAnns);
+        annotateScope(scope, trigger, "copsubj");
+    }
 
-            // Check *mod dependencies
-            for (int i = 0; i < MOD_DEPENDENCIES.length; i++) {
-                if (kind.equals(MOD_DEPENDENCIES[i]) && token.getId() == depId) {
-                    Annotation scope = (Annotation) inAnns.get(govId);
-                    String heuristic = dep.getFeatures().get(DEPENDENCY_LABEL_FEATURE).toString();
-                    String source = "";
-                    if (trigger.getFeatures().get(TRIGGER_SOURCE_FEATURE) != null) {
-                        source = trigger.getFeatures().get(TRIGGER_SOURCE_FEATURE).toString();
-                    }
-                    annotateScope(scope, trigger, heuristic, source);
+    /** Annotate the scope of a modifier.
+     * e.g. *amod(X) ^ scope(X)
+     */
+    private void modScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        List<ScoperDependency> scopeDeps = getDependencies(dependencies, MOD_DEPENDENCIES);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        Annotation scope = getPhrase(scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+    }
+
+    /** Filter Dependencies by type. */
+    public static List<ScoperDependency> getDependencies(
+            List<ScoperDependency> dependencies, String[] types) {
+        List<ScoperDependency> results = new ArrayList<ScoperDependency>();
+        for (ScoperDependency dependency : dependencies) {
+            for (int i = 0; i < types.length; i++) {
+                if (dependency.getType().equals(types[i])) {
+                    results.add(dependency);
                 }
             }
         }
+        return results;
     }
 
-    /** Annotate the scope of a given trigger */
-    /*
-    private void nomScope(Annotation trigger) {
-        Annotation token = getCoextensive(trigger,
-                inAnns.get(TOKEN_ANNOTATION_TYPE));
-        // Get nominalizations (TODO)
-        if (!filterPos(token, "NN")) return;
-        // Ignore noms which already get a scope from negator
-        if (getScope(trigger) != null) return;
-        // Iterate through all Dependencies TODO: Inefficient, limit by offset
-        Annotation scope = getMaxCat(trigger, "N");
-        if (scope == null) {
-            System.err.println("Warning: no scope for nominalization");
-            return;
+    /** Convert scoper dependency targets into Annotations */
+    public static List<Annotation> targetsToAnns(List<ScoperDependency> deps, AnnotationSet alist) {
+        ArrayList<Annotation> anns = new ArrayList<Annotation>();
+        for (ScoperDependency dep : deps) {
+            anns.add(alist.get(dep.getTargetId()));
         }
-        String heuristic = "nom-premod";
-        annotateScope(scope, trigger, heuristic);
+        return anns;
     }
-    */
+    private List<Annotation> targetsToAnns(List<ScoperDependency> deps) {
+        return targetsToAnns(deps, inAnns);
+    }
+
+    /** Find the smallest phrase dominating a list of tokens. */
+    public static Annotation getPhrase(List<Annotation> tokens, AnnotationSet alist) {
+        // Get the STN path for each token
+        List<PriorityQueue<Annotation>> paths = new ArrayList<PriorityQueue<Annotation>>();
+        for (Annotation token : tokens) {
+            paths.add(getPath(token, PHRASE_ANNOTATION_TYPE, alist));
+        }
+        // Find the smallest STN which is common to all paths
+        for (Annotation node : paths.get(0)) {
+            boolean commonNode = true;
+            for (PriorityQueue<Annotation> path : paths) {
+                if (!path.contains(node)) {
+                    commonNode = false;
+                    break;
+                }
+            }
+            if (commonNode) return node;
+        }
+        System.err.println("Error: No common node");
+        return null;
+    }
+    private Annotation getPhrase(List<Annotation> tokens) {
+        return getPhrase(tokens, inAnns);
+    }
 
     /** Standard function for creating scope annotation and features */
     private void annotateScope(Long startOffset, Long endOffset,
-            Annotation trigger, String heuristic, String source)
+                               Annotation trigger, String heuristic)
             throws InvalidOffsetException {
         // If scope already exists issue a warning
         Annotation scope = getScope(trigger);
@@ -179,53 +210,21 @@ public class Scoper extends AbstractLanguageAnalyser
             FeatureMap fm = gate.Factory.newFeatureMap();
             fm.put(SCOPE_TRIGGERID_FEATURE, trigger.getId());
             fm.put(SCOPE_HEURISTIC_FEATURE, heuristic);
-            fm.put(TRIGGER_SOURCE_FEATURE, source);
             outAnns.add(startOffset, endOffset, SCOPE_ANNOTATION_TYPE, fm);
         }
     }
-    /** Annotates scope from the offsets of an annotation */
+    /** Annotates scope from the offsets of an existing annotation */
     private void annotateScope(Annotation scope, Annotation trigger,
-            String heuristic, String source) {
+                               String heuristic) {
         try {
             Long startOffset = scope.getStartNode().getOffset();
             Long endOffset   = scope.getEndNode().getOffset();
-            annotateScope(startOffset, endOffset, trigger, heuristic, source);
+            annotateScope(startOffset, endOffset, trigger, heuristic);
         } catch (InvalidOffsetException e) {
             System.err.println("Error: invalid scope offsets.");
             e.printStackTrace();
         }
     }
-
-    // FIXME: This needs a lot of work...
-    /** Get the smallest STN gov including a trigger,
-     * with a given category pattern. */
-    /*
-    private Annotation getFirstStn(Annotation trigger, String cat) {
-        Annotation token = getCoextensive(trigger, inAnns.get(TOKEN_ANNOTATION_TYPE));
-        Annotation maxCat = null;
-        // Get the 
-        for (Annotation stn : inAnns.get(PHRASE_ANNOTATION_TYPE)) {
-            if (filterPos(stn, cat, PHRASE_CATEGORY_FEATURE)) {
-                if (maxCat == null) {
-                    maxCat = stn;
-                } else if (false) {
-            }
-        }}
-        System.err.println("Error: problem with SyntaxTreeNodes");
-        return null;*/
-        /* Kept as Sample code for PQ method
-       for (Annotation a : queue) {
-            System.out.println(a.getFeatures().get(PHRASE_CATEGORY_FEATURE));
-            System.out.println(getAnnotationText(a));
-            System.out.println();
-            if (filterPos(a, cat, PHRASE_CATEGORY_FEATURE)) {
-                maxCat = a;
-            } else {
-                return maxCat;
-            }
-        }
-        */
-    //}
 
     /** Returns true iff token's POS matches given POS.
      * @param   token  Annotation with a part-of-speech category.
@@ -253,9 +252,36 @@ public class Scoper extends AbstractLanguageAnalyser
                  tokenPos.substring(0, pos.length()).equals(pos) );
     }
 
+    /** Find the scope which corresponds to this trigger or token */
+    // TODO: Make triggers point to their scope to speed this up (change negator format)
+    public static Annotation getScope(Annotation trigger, AnnotationSet alist) {
+        Annotation root = getStn(trigger, "ROOT", alist);
+        if (root == null) {
+            System.err.println("Error: No ROOT node found.");
+            return null;
+        }
+        // Find scope who's triggerId corresponds to this trigger
+        AnnotationSet sentenceScopes = alist.get(SCOPE_ANNOTATION_TYPE,
+                                           root.getStartNode().getOffset(),
+                                           root.getEndNode().getOffset());
+        for (Annotation scope : sentenceScopes) {
+            Annotation scopeTrigger = alist.get(Integer.parseInt(
+                    scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
+            if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) &&
+                    trigger.coextensive(scopeTrigger) ) {
+                return scope;
+            }
+        }
+        // No scope found
+        return null;
+    }
+    private Annotation getScope(Annotation trigger) {
+        return getScope(trigger, inAnns);
+    }
+
     /** Get a SyntaxTreeNode of a certain category including an annotation */
     public static Annotation getStn(Annotation ann, String cat, AnnotationSet alist) {
-        for (Annotation a : getStnPath(ann, alist)) {
+        for (Annotation a : getPath(ann, PHRASE_ANNOTATION_TYPE, alist)) {
             if (a.getFeatures().get(PHRASE_CATEGORY_FEATURE).equals(cat)) {
                 return a;
             }
@@ -266,43 +292,44 @@ public class Scoper extends AbstractLanguageAnalyser
         return getStn(ann, cat, inAnns);
     }
 
-    /** Get the SyntaxTreeNode path, from token/trigger to ROOT */
-    // TODO: Convert this to getPath(token, "stn") to allow reuse with scopes
-    private PriorityQueue<Annotation> getStnPath(Annotation token) {
-        return getStnPath(token, inAnns);
-    }
-    public static PriorityQueue<Annotation> getStnPath(Annotation token,
-            AnnotationSet alist) {
+    /** Starting from a token, get a sorted list of embedded typed Annotations */
+    public static PriorityQueue<Annotation> getPath(Annotation token,
+            String type, AnnotationSet alist) {
         Comparator<Annotation> comparator = new AnnotationSpanComparator();
         PriorityQueue<Annotation> queue =
                 new PriorityQueue<Annotation>(10, comparator);
-        for (Annotation a : getOverlaping(token, alist.get(PHRASE_ANNOTATION_TYPE))) {
+        for (Annotation a : getOverlaping(token, alist.get(type))) {
             queue.add(a);
         }
         return queue;
     }
+    private PriorityQueue<Annotation> getPath(Annotation token, String type) {
+        return getPath(token, type, inAnns);
+    }
 
-    /** Find the scope which corresponds to this trigger or token */
-    // TODO: Make triggers point to their scope to speed this up (change negator format)
-    public static Annotation getScope(Annotation trigger, AnnotationSet alist) {
-        Annotation root = getStn(trigger, "ROOT", alist);
-        if (root != null) {
-            AnnotationSet sentenceScopes = alist.get(SCOPE_ANNOTATION_TYPE,
-                                               root.getStartNode().getOffset(),
-                                               root.getEndNode().getOffset());
-            for (Annotation scope : sentenceScopes) {
-                Annotation scopeTrigger = alist.get(Integer.parseInt(
-                        scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
-                if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) &&
-                        trigger.coextensive(scopeTrigger) ) {
-                    return scope;
-                }
+    /** Get the dependencies for this token/trigger */
+    public static List<ScoperDependency> getDependencies(Annotation trigger,
+            AnnotationSet alist) {
+        ArrayList<ScoperDependency> depList = new ArrayList<ScoperDependency>();
+        Annotation token = getToken(trigger, alist);
+        for (Annotation dep : getOverlaping(trigger, alist.get(DEPENDENCY_ANNOTATION_TYPE))) {
+            String type = dep.getFeatures().get(DEPENDENCY_LABEL_FEATURE).toString().trim();
+            String ids  = dep.getFeatures().get(DEPENDENCY_ARG_FEATURE).toString().trim();
+            ids = ids.substring(1, ids.length()-1);
+            String[] args = ids.split("\\,");
+            int depId = Integer.parseInt(args[1].trim());
+            int govId = Integer.parseInt(args[0].trim());
+            if (token.getId() == govId) {
+                depList.add(new ScoperDependency(type, depId, true));
+            }
+            else if (token.getId() == depId) {
+                depList.add(new ScoperDependency(type, govId, false));
             }
         }
-        return null;
+        return depList;
     }
-    private Annotation getScope(Annotation trigger) {
-        return getScope(trigger, inAnns);
+    private List<ScoperDependency> getDependencies(Annotation trigger) {
+        return getDependencies(trigger, inAnns);
     }
 
     /** Get the Sentence for this token/trigger */
