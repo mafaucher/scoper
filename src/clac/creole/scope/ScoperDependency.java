@@ -1,4 +1,13 @@
 package clac.creole.scope;
+/**
+ * Representation of a syntactic dependency for Scoper. Based on the GATE
+ * Parser-Stanford SentenceDependency class, with the addition that it allows
+ * dependencies in both directions. If the isGov flag is set to true, this
+ * dependency belongs to the governor, and the target is the dependant.
+ * If isGov is false, the roles are inversed.
+ *
+ * @author ma_fauch, CLaC 2014
+ */
 
 /**
  * Simple data structure representing a single dependency relation.  The "target"
