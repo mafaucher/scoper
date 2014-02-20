@@ -184,16 +184,12 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Find the smallest phrase dominating a list of tokens. */
-    public Annotation getPhrase(List<Annotation> tokens, //TODO: make static
+    public static Annotation getPhrase(List<Annotation> tokens,
             AnnotationSet alist) {
-        boolean debug = false; //!
-        if (tokens.size() > 1) debug = true; //!
-        if (debug) System.out.println("*** "+getAnnotationText(tokens.get(0))+" ***"); //!
         // Get the STN path for each token
         List<PriorityQueue<Annotation>> paths = new ArrayList<PriorityQueue<Annotation>>();
         for (Annotation token : tokens) {
-            if (debug) System.out.println(getAnnotationText(token)); //!
-            paths.add(getPath(token, PHRASE_ANNOTATION_TYPE));
+            paths.add(getPath(token, PHRASE_ANNOTATION_TYPE, alist));
         }
         // Find the smallest STN which is common to all paths
         PriorityQueue<Annotation> path1 = paths.get(0);
@@ -206,12 +202,7 @@ public class Scoper extends AbstractLanguageAnalyser
                     break;
                 }
             }
-            if (commonNode) {
-                if (debug) System.out.println("O "+getAnnotationText(node)); //!
-                return node;
-            } else {
-                if (debug) System.out.println("X "+getAnnotationText(node)); //!
-            }
+            if (commonNode) return node;
         }
         System.err.println("Error: No common node");
         return null;
