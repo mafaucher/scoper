@@ -47,7 +47,7 @@ public class Scoper extends AbstractLanguageAnalyser
 
     /// CONSTANTS ///
 
-    private static final boolean DEBUG = true;
+    private static final boolean DEBUG = false;
 
     // Trigger
     public static final String TRIGGER_ANNOTATION_TYPE    = "Trigger";
@@ -256,7 +256,7 @@ public class Scoper extends AbstractLanguageAnalyser
      *                 default is false.
      * @param   cat    (optional) the feature name for the category,
      *                 default is "category".
-     * @return  Whether the annotation has the right part-of-speech
+     * @return  Whether the POS of the token matches the given POS
      * */
     private boolean filterPos(Annotation token, String pos) {
         return filterPos(token, pos, false, "category");
@@ -276,8 +276,10 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Find the scope which corresponds to this trigger or token */
-    // TODO: Make triggers point to their scope to speed this up (change negator format)
-    public static Annotation getScope(Annotation trigger, AnnotationSet alist) {
+    // TODO: Make triggers point to their scope to speed this up
+    // This requires changing/postprocessing negator
+    public static Annotation getScope(Annotation trigger,
+            AnnotationSet alist) {
         Annotation root = getStn(trigger, "ROOT", alist);
         if (root == null) {
             System.err.println("Error: No ROOT node found.");
