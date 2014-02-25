@@ -40,6 +40,9 @@ public class Scoper extends AbstractLanguageAnalyser
     protected String outputAnnotationSetName;
     protected String sentenceAnnName;
     protected String triggerAnnName;
+    protected boolean enableAdjScope;
+    protected boolean enableNomScope;
+    protected boolean enableGrammarScope;
 
     // Private attributes
     private AnnotationSet inAnns;
@@ -70,6 +73,7 @@ public class Scoper extends AbstractLanguageAnalyser
     // Phrase (SyntaxTreeNode)
     public static final String PHRASE_ANNOTATION_TYPE     = Parser.PHRASE_ANNOTATION_TYPE;
     public static final String PHRASE_CATEGORY_FEATURE    = Parser.PHRASE_CAT_FEATURE;
+    public static final String PHRASE_CATEGORY_ROOT       = "ROOT";
 
     // Dependency
     public static final String DEPENDENCY_ANNOTATION_TYPE = Parser.DEPENDENCY_ANNOTATION_TYPE;
@@ -100,9 +104,16 @@ public class Scoper extends AbstractLanguageAnalyser
             Annotation token = getToken(trigger);
             if (token != null) {
                 List<ScoperDependency> deps = getDependencies(trigger);
-                modScope(trigger, deps);
-                copsubjScope(trigger, deps);
-                //nomScope(trigger);
+                if (enableAdjScope) {
+                    modScope(trigger, deps);
+                    copsubjScope(trigger, deps);
+                }
+                if (enableNomScope) {
+                    prenommodScope(trigger, deps); //TODO: test this
+                }
+                if (enableGrammarScope) {
+                    grammarScope(trigger, deps);
+                }
             }
         }
     }
@@ -116,6 +127,19 @@ public class Scoper extends AbstractLanguageAnalyser
     @Override
     public void reInit() throws ResourceInstantiationException {
         init();
+    }
+
+    /** Annotate the scope of a modifier.
+     * e.g. *amod(X) ^ scope(X)
+     */
+    private void modScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Annotate the governor of mod dependencies, if exists
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, MOD_DEPENDENCIES, false);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        Annotation scope = getPhrase(scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
     }
 
     /** Annotate the subject of an adjective with a copula.
@@ -138,17 +162,58 @@ public class Scoper extends AbstractLanguageAnalyser
         annotateScope(scope, trigger, "copsubj");
     }
 
-    /** Annotate the scope of a modifier.
-     * e.g. *amod(X) ^ scope(X)
+    /** Annotate the scope of a noun with a premodifier.
+     * e.g. amod(Y) ^ amod(X) ^ Y &lt; X ^ scope(X)
      */
-    private void modScope(Annotation trigger, List<ScoperDependency> dependencies) {
-        // Annotate the governor of mod dependencies, if exists
+    private void prenommodScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Annotate the dep of a mod dependencies, if exists
         List<ScoperDependency> scopeDeps =
-                filterDependencies(dependencies, MOD_DEPENDENCIES, false);
+                filterDependencies(dependencies, MOD_DEPENDENCIES, true);
         if (scopeDeps == null || scopeDeps.isEmpty()) return;
-        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
-        Annotation scope = getPhrase(scopeAnns);
-        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+        Annotation scope = null;
+        // Look for the nearest prenominal modifier
+        for (ScoperDependency dep : scopeDeps) {
+            Annotation candidate = inAnns.get(dep.getTargetId());
+            // Verify that the candidate scope precedes trigger
+            if (candidate.getStartNode().getOffset()
+                < trigger.getStartNode().getOffset())
+            {
+                // Get the closest modifier to the trigger
+                if (scope == null || candidate.getStartNode().getOffset()
+                                       > scope.getStartNode().getOffset())
+                {
+                    scope = candidate;
+                }
+            }
+        }
+        if (scope != null) {
+            annotateScope(scope, trigger, "prenommod");
+        }
+    }
+
+    /** Annotate using the grammarscope approach.
+     * e.g. dep(X) ^ xdep(Y) ^ scope(X, Y)
+     */
+    private void grammarScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Get dependants for this trigger
+        List<ScoperDependency> scopeDeps = filterDependencies(dependencies);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        // and recursively anotate dependants of dependants, etc.
+        LinkedList<Annotation> openList  = new LinkedList<Annotation>(targetsToAnns(scopeDeps));
+        LinkedList<Annotation> closeList = new LinkedList<Annotation>();
+        while (openList.size() != 0) {
+            Annotation a = openList.remove();
+            if (!closeList.contains(a)) {
+                closeList.add(a);
+                List<ScoperDependency> deps =
+                        filterDependencies(getDependencies(a));
+                if (!(deps == null || deps.isEmpty())) {
+                    openList.addAll(targetsToAnns(deps));
+                }
+            }
+        }
+        Annotation scope = getPhrase(closeList);
+        annotateScope(scope, trigger, "grammarscope");
     }
 
     /** Filter Dependencies by type. */
@@ -166,9 +231,24 @@ public class Scoper extends AbstractLanguageAnalyser
         return results;
     }
     public static List<ScoperDependency> filterDependencies(
+            List<ScoperDependency> dependencies, boolean gov) {
+        List<ScoperDependency> results = new ArrayList<ScoperDependency>();
+        for (ScoperDependency dependency : dependencies) {
+            if (dependency.isGov() == gov) {
+                results.add(dependency);
+            }
+        }
+        return results;
+    }
+    public static List<ScoperDependency> filterDependencies(
             List<ScoperDependency> dependencies, String[] types) {
         return filterDependencies(dependencies, types, true);
     }
+    public static List<ScoperDependency> filterDependencies(
+            List<ScoperDependency> dependencies) {
+        return filterDependencies(dependencies, true);
+    }
+
 
     /** Convert scoper dependency targets into Annotations */
     public static List<Annotation> targetsToAnns(List<ScoperDependency> deps,
@@ -280,9 +360,9 @@ public class Scoper extends AbstractLanguageAnalyser
     // This requires changing/postprocessing negator
     public static Annotation getScope(Annotation trigger,
             AnnotationSet alist) {
-        Annotation root = getStn(trigger, "ROOT", alist);
+        Annotation root = getStn(trigger, PHRASE_CATEGORY_ROOT, alist);
         if (root == null) {
-            System.err.println("Error: No ROOT node found.");
+            System.err.println("Error: No root node found.");
             return null;
         }
         // Find scope who's triggerId corresponds to this trigger
@@ -458,6 +538,39 @@ public class Scoper extends AbstractLanguageAnalyser
 
     public String getTriggerAnnName() {
         return this.triggerAnnName;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "",
+                     defaultValue = "true")
+    public void setEnableAdjScope(Boolean enableAdjScope) {
+        this.enableAdjScope = enableAdjScope;
+    }
+
+    public Boolean getEnableAdjScope() {
+        return this.enableAdjScope;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "",
+                     defaultValue = "true")
+    public void setEnableNomScope(Boolean enableNomScope) {
+        this.enableNomScope = enableNomScope;
+    }
+
+    public Boolean getEnableNomScope() {
+        return this.enableNomScope;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "",
+                     defaultValue = "false")
+    public void setEnableGrammarScope(Boolean enableGrammarScope) {
+        this.enableGrammarScope = enableGrammarScope;
+    }
+
+    public Boolean getEnableGrammarScope() {
+        return this.enableGrammarScope;
     }
 
     @RunTime
