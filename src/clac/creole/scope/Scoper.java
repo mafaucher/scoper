@@ -50,7 +50,7 @@ public class Scoper extends AbstractLanguageAnalyser
 
     /// CONSTANTS ///
 
-    private static final boolean DEBUG = false;
+    private static final boolean DEBUG = true;
 
     // Trigger
     public static final String TRIGGER_ANNOTATION_TYPE    = "Trigger";
@@ -62,13 +62,14 @@ public class Scoper extends AbstractLanguageAnalyser
     // Scope
     public static final String SCOPE_ANNOTATION_TYPE      = "Scope";
     public static final String SCOPE_HEURISTIC_FEATURE    = "heuristic";
-    public static final String SCOPE_TYPE_FEATURE         = "type"; //TODO
+    public static final String SCOPE_TYPE_FEATURE         = "type";
     public static final String SCOPE_TRIGGERID_FEATURE    = "triggerID";
 
     // Token
     public static final String TOKEN_ANNOTATION_TYPE      = ANNIEConstants.TOKEN_ANNOTATION_TYPE;
     public static final String TOKEN_CATEGORY_FEATURE     = ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
     public static final String TOKEN_CATEGORY_ADJECTIVE   = "JJ"; // Matches JJ.* (see filterPos)
+    public static final String TOKEN_CATEGORY_NOUN        = "NN"; // Matches NN.* (see filterPos)
 
     // Phrase (SyntaxTreeNode)
     public static final String PHRASE_ANNOTATION_TYPE     = Parser.PHRASE_ANNOTATION_TYPE;
@@ -80,12 +81,11 @@ public class Scoper extends AbstractLanguageAnalyser
     public static final String DEPENDENCY_ARG_FEATURE     = Parser.DEPENDENCY_ARG_FEATURE;
     public static final String DEPENDENCY_LABEL_FEATURE   = Parser.DEPENDENCY_LABEL_FEATURE;
 
+    // Unsure mod: advcl, appos, det, discourse, goeswith, mark, mwen, padvmo,
+    //             num, number, poss, possessive, preconj, predet, prep, prtd.
     public static final String[] MOD_DEPENDENCIES =
-            { "amod", "rcmod", "quantmod", "infmod", "partmod", "nn" };
-    // Unsure: advcl, appos, mark, num, number, discourse, advmod,
-    // npadvmod, mwe, det, predet, preconj, poss, possessive, prep, prt, goeswith
-
-    public static final String[] COP_DEPENDENCIES = { "cop", "auxpass" };
+            { "advmod", "amod", "infmod", "nn", "partmod", "quantmod", "rcmod" };
+    public static final String[] COP_DEPENDENCIES  = { "cop", "auxpass" };
     public static final String[] SUBJ_DEPENDENCIES = { "nsubj" };
 
     /** Execute PR over a single document */
@@ -109,7 +109,7 @@ public class Scoper extends AbstractLanguageAnalyser
                     copsubjScope(trigger, deps);
                 }
                 if (enableNomScope) {
-                    prenommodScope(trigger, deps); //TODO: test this
+                    prenommodScope(trigger, deps);
                 }
                 if (enableGrammarScope) {
                     grammarScope(trigger, deps);
@@ -166,6 +166,9 @@ public class Scoper extends AbstractLanguageAnalyser
      * e.g. amod(Y) ^ amod(X) ^ Y &lt; X ^ scope(X)
      */
     private void prenommodScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Filter all but nouns
+        Annotation token = getToken(trigger);
+        if (!filterPos(token, TOKEN_CATEGORY_NOUN)) return;
         // Annotate the dep of a mod dependencies, if exists
         List<ScoperDependency> scopeDeps =
                 filterDependencies(dependencies, MOD_DEPENDENCIES, true);
