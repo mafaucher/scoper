@@ -502,7 +502,6 @@ public class Scoper extends AbstractLanguageAnalyser
     @CreoleParameter(comment = "The input annotation set name")
     public void setInputAnnotationSetName(String inputAnnotationSetName) {
         this.inputAnnotationSetName = inputAnnotationSetName;
-        this.inAnns = document.getAnnotations(inputAnnotationSetName);
     }
 
     public String getInputAnnotationSetName() {
@@ -514,7 +513,6 @@ public class Scoper extends AbstractLanguageAnalyser
     @CreoleParameter(comment = "The output annotation set name")
     public void setOutputAnnotationSetName(String outputAnnotationSetName) {
         this.outputAnnotationSetName = outputAnnotationSetName;
-        this.outAnns = document.getAnnotations(outputAnnotationSetName);
     }
 
     public String getOutputAnnotationSetName() {
