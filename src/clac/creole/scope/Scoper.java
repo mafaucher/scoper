@@ -55,6 +55,7 @@ public class Scoper extends AbstractLanguageAnalyser
     // Trigger
     public static final String TRIGGER_ANNOTATION_TYPE    = "Trigger";
     public static final String TRIGGER_SOURCE_FEATURE     = "source";
+    public static final String TRIGGER_TYPE_FEATURE       = "type";
     public static final String TRIGGER_POLARITY_FEATURE   = "priorpolarity";
     public static final String TRIGGER_SCORE_FEATURE      = "sentimentScore"; //TODO
     public static final String TRIGGER_SCOPEID_FEATURE    = "scopeID"; //TODO
@@ -62,7 +63,6 @@ public class Scoper extends AbstractLanguageAnalyser
     // Scope
     public static final String SCOPE_ANNOTATION_TYPE      = "Scope";
     public static final String SCOPE_HEURISTIC_FEATURE    = "heuristic";
-    public static final String SCOPE_TYPE_FEATURE         = "type";
     public static final String SCOPE_TRIGGERID_FEATURE    = "triggerID";
 
     // Token
@@ -114,6 +114,26 @@ public class Scoper extends AbstractLanguageAnalyser
                 if (enableGrammarScope) {
                     grammarScope(trigger, deps);
                 }
+            }
+        }
+
+        // Propagate the scope as a feature
+        for (Annotation trigger : triggers) {
+            // Get list of scopes this trigger is embedded in
+            PriorityQueue<Annotation> scopes =
+                    getPath(trigger, SCOPE_ANNOTATION_TYPE);
+            if (scopes.size() > 0) {
+                Annotation scope = scopes.remove();
+                Annotation scopeTrigger =
+                        inAnns.get(Integer.parseInt(scope.getFeatures()
+                                    .get(SCOPE_TRIGGERID_FEATURE).toString()));
+                String scopeType = getScopeType(scopeTrigger);
+                if (DEBUG) {
+                    System.err.println(getAnnotationText(trigger)+" "+scopeType);
+                }
+                //TODO: Add as feature somehow
+                FeatureMap features = trigger.getFeatures();
+                features.put(scopeType, "true");
             }
         }
     }
@@ -438,6 +458,23 @@ public class Scoper extends AbstractLanguageAnalyser
     }
     private List<ScoperDependency> getDependencies(Annotation trigger) {
         return getDependencies(trigger, inAnns);
+    }
+
+    /** Get the trigger type */
+    public static String getScopeType(Annotation trigger, AnnotationSet alist) {
+        FeatureMap features = trigger.getFeatures();
+        if (features.containsKey(TRIGGER_TYPE_FEATURE)) {
+            return features.get(TRIGGER_TYPE_FEATURE).toString();
+        } else {
+            if (features.containsKey(TRIGGER_POLARITY_FEATURE)) {
+                return features.get(TRIGGER_POLARITY_FEATURE).toString();
+            }
+        }
+        if (DEBUG) System.err.println("Warning: trigger has no type");
+        return "NONE";
+    }
+    private String getScopeType(Annotation trigger) {
+        return getScopeType(trigger, inAnns);
     }
 
     /** Get the Sentence for this token/trigger */
