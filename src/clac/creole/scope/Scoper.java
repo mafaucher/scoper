@@ -117,7 +117,8 @@ public class Scoper extends AbstractLanguageAnalyser
             }
         }
 
-        // Propagate the scope as a feature
+        // Propagate the scope as a features
+        FeatureMap features = trigger.getFeatures();
         for (Annotation trigger : triggers) {
             // Get list of scopes this trigger is embedded in
             PriorityQueue<Annotation> scopes =
@@ -131,8 +132,7 @@ public class Scoper extends AbstractLanguageAnalyser
                 if (DEBUG) {
                     System.err.println(getAnnotationText(trigger)+" "+scopeType);
                 }
-                //TODO: Add as feature somehow
-                FeatureMap features = trigger.getFeatures();
+                // Add as feature
                 features.put(scopeType, "true");
             }
         }
