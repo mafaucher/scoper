@@ -420,11 +420,12 @@ public class Scoper extends AbstractLanguageAnalyser
                                            root.getStartNode().getOffset(),
                                            root.getEndNode().getOffset());
         for (Annotation scope : sentenceScopes) {
-            Annotation scopeTrigger = alist.get(Integer.parseInt(
+            if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) ) {
+                Annotation scopeTrigger = alist.get(Integer.parseInt(
                     scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
-            if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) &&
-                    trigger.coextensive(scopeTrigger) ) {
-                return scope;
+                if (trigger.coextensive(scopeTrigger)) {
+                    return scope;
+                }
             }
         }
         // No scope found
