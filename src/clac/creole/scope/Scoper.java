@@ -50,7 +50,7 @@ public class Scoper extends AbstractLanguageAnalyser
 
     /// CONSTANTS ///
 
-    private static final boolean DEBUG = true;
+    public static final boolean DEBUG = true;
 
     // Trigger
     public static final String TRIGGER_ANNOTATION_TYPE    = "Trigger";
@@ -87,6 +87,16 @@ public class Scoper extends AbstractLanguageAnalyser
             { "advmod", "amod", "infmod", "nn", "partmod", "quantmod", "rcmod" };
     public static final String[] COP_DEPENDENCIES  = { "cop", "auxpass" };
     public static final String[] SUBJ_DEPENDENCIES = { "nsubj" };
+    public static final String[] CONJ_DEPENDENCIES = { "conj" }; // Matches conj* (see filterConjDependencies)
+
+    public static final String SENTIMENT_NA       = "NA";
+    public static final String SENTIMENT_NONE     = "NONE";
+    public static final String SENTIMENT_NEUTRAL  = "neutral";
+    public static final String SENTIMENT_POSITIVE = "positive";
+    public static final String SENTIMENT_NEGATIVE = "negative";
+    public static final String[] SENTIMENT_ALL    =
+            { SENTIMENT_NA, SENTIMENT_NONE,
+              SENTIMENT_NEUTRAL, SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE };
 
     /** Execute PR over a single document */
     public void execute() throws ExecutionException {
@@ -274,6 +284,21 @@ public class Scoper extends AbstractLanguageAnalyser
         return filterDependencies(dependencies, true);
     }
 
+    public static List<ScoperDependency> filterConjDependencies(
+            List<ScoperDependency> dependencies, boolean gov) {
+        List<ScoperDependency> results = new ArrayList<ScoperDependency>();
+        for (ScoperDependency dependency : dependencies) {
+            if ( !(dependency.getType().startsWith(CONJ_DEPENDENCIES[0]))
+                    && dependency.isGov() == gov ) {
+                results.add(dependency);
+            }
+        }
+        return results;
+    }
+    public static List<ScoperDependency> filterConjDependencies(
+            List<ScoperDependency> dependencies) {
+        return filterConjDependencies(dependencies, true);
+    }
 
     /** Convert scoper dependency targets into Annotations */
     public static List<Annotation> targetsToAnns(List<ScoperDependency> deps,
@@ -463,7 +488,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Get the trigger type */
-    public static String getScopeType(Annotation trigger, AnnotationSet alist) {
+    public static String getScopeType(Annotation trigger) {
         FeatureMap features = trigger.getFeatures();
         if (features.containsKey(TRIGGER_TYPE_FEATURE)) {
             return features.get(TRIGGER_TYPE_FEATURE).toString();
@@ -473,10 +498,22 @@ public class Scoper extends AbstractLanguageAnalyser
             }
         }
         if (DEBUG) System.err.println("Warning: trigger has no type");
-        return "NONE";
+        return SENTIMENT_NONE;
     }
-    private String getScopeType(Annotation trigger) {
-        return getScopeType(trigger, inAnns);
+
+    public static String getSentimentType(Annotation token, AnnotationSet alist) {
+        Annotation trigger = getTrigger(token, alist);
+        if (trigger != null) {
+            String scopeType = getScopeType(trigger);
+            if (Arrays.asList(SENTIMENT_ALL).contains(scopeType)) {
+                return scopeType;
+            }
+        }
+        return SENTIMENT_NONE;
+    }
+
+    private String getSentimentType(Annotation token) {
+        return getSentimentType(token, inAnns);
     }
 
     /** Get the Sentence for this token/trigger */
@@ -501,6 +538,15 @@ public class Scoper extends AbstractLanguageAnalyser
     }
     private Annotation getToken(Annotation trigger) {
         return getToken(trigger, inAnns);
+    }
+
+    /** Find the trigger which corresponds to this token */
+    public static Annotation getTrigger(Annotation token, AnnotationSet alist) {
+        Annotation trigger = getCoextensive(token, alist.get(TRIGGER_ANNOTATION_TYPE));
+        return trigger;
+    }
+    private Annotation getTrigger(Annotation token) {
+        return getTrigger(token, inAnns);
     }
 
     /** Find the first coextensive annotation in a list or return null */
