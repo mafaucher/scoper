@@ -136,12 +136,10 @@ public class Scoper extends AbstractLanguageAnalyser
                     getPath(trigger, SCOPE_ANNOTATION_TYPE);
             if (scopes.size() > 0) {
                 Annotation scope = scopes.remove();
-                if (!scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE)) {
+                Annotation scopeTrigger = getScopeTrigger(scope);
+                if (scopeTrigger == null) {
                     continue;
                 }
-                Annotation scopeTrigger =
-                        inAnns.get(Integer.parseInt(scope.getFeatures()
-                                    .get(SCOPE_TRIGGERID_FEATURE).toString()));
                 String scopeType = getScopeType(scopeTrigger);
                 // Add as feature
                 features.put(scopeType, "true");
@@ -408,6 +406,23 @@ public class Scoper extends AbstractLanguageAnalyser
                  tokenPos.substring(0, pos.length()).equals(pos) );
     }
 
+    /** Get the trigger which corresponds to this scope */
+    public static Annotation getScopeTrigger(Annotation scope,
+            AnnotationSet alist) {
+        if (!scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE)) {
+            System.err.println("Error: Scope without TriggerID");
+            System.err.println("Source: "
+                    +scope.getFeatures().get(SCOPE_HEURISTIC_FEATURE));
+            return null;
+        }
+        Annotation trigger = alist.get(Integer.parseInt(
+                scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
+        return trigger;
+    }
+    private Annotation getScopeTrigger(Annotation scope) {
+        return getScopeTrigger(scope, inAnns);
+    }
+
     /** Find the scope which corresponds to this trigger or token */
     // TODO: Make triggers point to their scope to speed this up
     // This requires changing/postprocessing negator
@@ -423,12 +438,9 @@ public class Scoper extends AbstractLanguageAnalyser
                                            root.getStartNode().getOffset(),
                                            root.getEndNode().getOffset());
         for (Annotation scope : sentenceScopes) {
-            if ( scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE) ) {
-                Annotation scopeTrigger = alist.get(Integer.parseInt(
-                    scope.getFeatures().get(SCOPE_TRIGGERID_FEATURE).toString()));
-                if (trigger.coextensive(scopeTrigger)) {
-                    return scope;
-                }
+            Annotation scopeTrigger = getScopeTrigger(scope, alist);
+            if (scopeTrigger != null && trigger.coextensive(scopeTrigger)) {
+                return scope;
             }
         }
         // No scope found
