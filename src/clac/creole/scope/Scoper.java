@@ -136,6 +136,9 @@ public class Scoper extends AbstractLanguageAnalyser
                     getPath(trigger, SCOPE_ANNOTATION_TYPE);
             if (scopes.size() > 0) {
                 Annotation scope = scopes.remove();
+                if (!scope.getFeatures().containsKey(SCOPE_TRIGGERID_FEATURE)) {
+                    continue;
+                }
                 Annotation scopeTrigger =
                         inAnns.get(Integer.parseInt(scope.getFeatures()
                                     .get(SCOPE_TRIGGERID_FEATURE).toString()));
