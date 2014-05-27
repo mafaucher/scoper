@@ -655,7 +655,7 @@ public class Scoper extends AbstractLanguageAnalyser
 
     @RunTime
     @CreoleParameter(comment = "",
-                     defaultValue = "true")
+                     defaultValue = "false")
     public void setEnableNomScope(Boolean enableNomScope) {
         this.enableNomScope = enableNomScope;
     }
