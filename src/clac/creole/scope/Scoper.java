@@ -104,11 +104,12 @@ public class Scoper extends AbstractLanguageAnalyser
     public static final String PREDICATE_HEDGE       = "hedge";
     public static final String PREDICATE_INTENSIFIER = "intensifier";
     public static final String PREDICATE_DIMINISHER  = "diminisher";
+    public static final String PREDICATE_SENTIMENT   = "sentiment";
     public static final String[] PREDICATE_ALL       =
             { PREDICATE_MODAL, PREDICATE_NEGATOR, PREDICATE_HEDGE,
-              PREDICATE_INTENSIFIER, PREDICATE_DIMINISHER };
+              PREDICATE_INTENSIFIER, PREDICATE_DIMINISHER, PREDICATE_SENTIMENT };
 
-    // Polarity Values
+    // Sentiment Polarity Values
     public static final String SENTIMENT_NA       = "NA";   // TODO: remove?
     public static final String SENTIMENT_NONE     = "NONE"; // TODO: remove?
     public static final String SENTIMENT_NEUTRAL  = "neutral";
@@ -131,8 +132,8 @@ public class Scoper extends AbstractLanguageAnalyser
         AnnotationSet triggers = inAnns.get(triggerAnnName);
 
         // PHASE 1: Attempt to find scope for all predicates
-        List<Annotation> predicates = new ArrayList(triggers);
-        //TODO? TO USE ONLY PREDICATES: filterTypes(triggers.inDocumentOrder(), PREDICATE_ALL);
+        List<Annotation> predicates =
+            filterTypes(triggers.inDocumentOrder(), PREDICATE_ALL);
         for (Annotation predicate : predicates) {
             Annotation token = getToken(predicate);
             if (token != null) {
@@ -164,7 +165,6 @@ public class Scoper extends AbstractLanguageAnalyser
             }
 
             // Get the first (smallest span) scope and add as feature
-            // TODO: Deal with multiple scopes
             while (scopes.size() > 0) {
                 Annotation scope = scopes.remove();
                 Annotation scopeTrigger = getScopeTrigger(scope);
