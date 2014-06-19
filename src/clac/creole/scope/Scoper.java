@@ -40,6 +40,7 @@ public class Scoper extends AbstractLanguageAnalyser
     protected String outputAnnotationSetName;
     protected String sentenceAnnName;
     protected String triggerAnnName;
+    protected boolean filterPredicates;
     protected boolean enableAdjScope;
     protected boolean enableNomScope;
     protected boolean enableGrammarScope;
@@ -132,8 +133,13 @@ public class Scoper extends AbstractLanguageAnalyser
         AnnotationSet triggers = inAnns.get(triggerAnnName);
 
         // PHASE 1: Attempt to find scope for all predicates
-        List<Annotation> predicates =
-            filterTypes(triggers.inDocumentOrder(), PREDICATE_ALL);
+        List<Annotation> predicates;
+
+        if (filterPredicates) {
+            predicates = filterTypes(triggers.inDocumentOrder(), PREDICATE_ALL);
+        } else {
+            predicates = triggers.inDocumentOrder();
+        }
         for (Annotation predicate : predicates) {
             Annotation token = getToken(predicate);
             if (token != null) {
@@ -721,6 +727,17 @@ public class Scoper extends AbstractLanguageAnalyser
 
     public String getTriggerAnnName() {
         return this.triggerAnnName;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "",
+                     defaultValue = "false")
+    public void setFilterPredicates(Boolean filterPredicates) {
+        this.filterPredicates = filterPredicates;
+    }
+
+    public Boolean getFilterPredicates() {
+        return this.filterPredicates;
     }
 
     @RunTime
