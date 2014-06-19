@@ -136,9 +136,9 @@ public class Scoper extends AbstractLanguageAnalyser
         List<Annotation> predicates;
 
         if (filterPredicates) {
-            predicates = filterTypes(triggers.inDocumentOrder(), PREDICATE_ALL);
+            predicates = filterTypes(gate.Utils.inDocumentOrder(triggers), PREDICATE_ALL);
         } else {
-            predicates = triggers.inDocumentOrder();
+            predicates = gate.Utils.inDocumentOrder(triggers);
         }
         for (Annotation predicate : predicates) {
             Annotation token = getToken(predicate);
@@ -170,7 +170,7 @@ public class Scoper extends AbstractLanguageAnalyser
                 features.put(TRIGGER_RSCOPEIDS_FEATURE, ids);
             }
 
-            // Get the first (smallest span) scope and add as feature
+            // Get the scope types and add as features
             while (scopes.size() > 0) {
                 Annotation scope = scopes.remove();
                 Annotation scopeTrigger = getScopeTrigger(scope);
