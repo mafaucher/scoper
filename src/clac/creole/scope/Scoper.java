@@ -217,7 +217,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the scope of a modifier.
-     * e.g. *mod(X) ^ scope(X)
+     * e.g. *mod(X) =&gt; scope(X)
      */
     private void modScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Annotate the governor of mod dependencies, if exists
@@ -230,7 +230,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the subject of an adjective with a copula.
-     * e.g. cop(X) ^ nsubj(Y) ^ scope(Y)
+     * e.g. cop(X) ^ nsubj(Y) =&gt; scope(Y)
      */
     private void copsubjScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Filter all but adjectives
@@ -250,7 +250,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the scope of a noun with a premodifier.
-     * e.g. amod(Y) ^ amod(X) ^ Y &lt; X ^ scope(X)
+     * e.g. amod(Y) ^ amod(X) ^ Y &lt; X =&gt; scope(X)
      */
     private void prenommodScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Filter all but nouns
