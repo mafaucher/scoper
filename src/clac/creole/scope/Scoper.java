@@ -70,7 +70,6 @@ public class Scoper extends AbstractLanguageAnalyser
     public static final String SCOPE_HEURISTIC_FEATURE      = "heuristic";
     public static final String SCOPE_TRIGGERID_FEATURE      = "triggerID";
     public static final String SCOPE_TRIGGERSTRING_FEATURE  = "triggerString";
-
     public static final String[] SCOPE_INHERITED_FEATURES   =
             { TRIGGER_TYPE_FEATURE, TRIGGER_MINORTYPE_FEATURE,
               TRIGGER_POLARITY_FEATURE, TRIGGER_SCORE_FEATURE };
@@ -96,8 +95,11 @@ public class Scoper extends AbstractLanguageAnalyser
     public static final String[] SUBJ_DEPENDENCIES = { "nsubj" };
     public static final String[] MOD_DEPENDENCIES  =
             { "advmod", "amod", "infmod", "nn", "partmod", "quantmod", "rcmod" };
-    // Unsure: advcl, appos, det, discourse, goeswith, mark, mwe, padvmo,
-    //         num, number, poss, possessive, preconj, predet, prep, prtd.
+    // TODO: check if we should include the following list of mod dependencies:
+    // advcl, appos, det, discourse, goeswith, mark, mwe, padvmo,
+    // num, number, poss, possessive, preconj, predet, prep, prtd.
+
+    public static final String NO_SCOPE              = "noscope";
 
     // Predicate Types
     public static final String PREDICATE_MODAL       = "modal";
@@ -111,14 +113,11 @@ public class Scoper extends AbstractLanguageAnalyser
               PREDICATE_INTENSIFIER, PREDICATE_DIMINISHER, PREDICATE_SENTIMENT };
 
     // Sentiment Polarity Values
-    public static final String SENTIMENT_NA       = "NA";   // TODO: remove?
-    public static final String SENTIMENT_NONE     = "NONE"; // TODO: remove?
     public static final String SENTIMENT_NEUTRAL  = "neutral";
     public static final String SENTIMENT_POSITIVE = "positive";
     public static final String SENTIMENT_NEGATIVE = "negative";
     public static final String[] SENTIMENT_ALL    =
-            { SENTIMENT_NA, SENTIMENT_NONE,
-              SENTIMENT_NEUTRAL, SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE };
+            { SENTIMENT_NEUTRAL, SENTIMENT_POSITIVE, SENTIMENT_NEGATIVE };
 
     /** Execute PR over a single document */
     public void execute() throws ExecutionException {
@@ -134,9 +133,9 @@ public class Scoper extends AbstractLanguageAnalyser
 
         // PHASE 1: Attempt to find scope for all predicates
         List<Annotation> predicates;
-
         if (filterPredicates) {
-            predicates = filterTypes(gate.Utils.inDocumentOrder(triggers), PREDICATE_ALL);
+            predicates = filterTypes( gate.Utils.inDocumentOrder(triggers),
+                                      PREDICATE_ALL );
         } else {
             predicates = gate.Utils.inDocumentOrder(triggers);
         }
@@ -182,11 +181,17 @@ public class Scoper extends AbstractLanguageAnalyser
                 if (scopeType == null) {
                     continue;
                 }
-                features.put(scope.getFeatures().get(TRIGGER_TYPE_FEATURE), "true");
+                // Annotate scope type as a new feature
+                String type = scope.getFeatures().get(TRIGGER_TYPE_FEATURE).toString();
+                if (type.equals(PREDICATE_SENTIMENT)) {
+                    features.put(type, scope.getFeatures().get(TRIGGER_POLARITY_FEATURE));
+                } else {
+                    features.put(type, "true");
+                }
                 hasScope = true;
             }
             if (!hasScope) {
-                features.put("noscope", "true");
+                features.put(NO_SCOPE, "true");
             }
         }
     }
@@ -592,32 +597,7 @@ public class Scoper extends AbstractLanguageAnalyser
             return features.get(TRIGGER_TYPE_FEATURE).toString();
         }
         return null;
-        /* Do not use polarity as scope type TODO?
-        } else {
-            if (features.containsKey(TRIGGER_POLARITY_FEATURE)) {
-                return features.get(TRIGGER_POLARITY_FEATURE).toString();
-            }
-        }
-        if (DEBUG) System.err.println("Warning: trigger has no type");
-        return SENTIMENT_NONE;
-        */
     }
-    /*
-    public static String getSentimentType(Annotation token, AnnotationSet alist) {
-        Annotation trigger = getTrigger(token, alist);
-        if (trigger != null) {
-            String scopeType = getScopeType(trigger);
-            if (Arrays.asList(SENTIMENT_ALL).contains(scopeType)) {
-                return scopeType;
-            }
-        }
-        return SENTIMENT_NONE;
-    }
-
-    private String getSentimentType(Annotation token) {
-        return getSentimentType(token, inAnns);
-    }
-    */
 
     /** Get the Sentence for this token/trigger */
     public static Annotation getSentence(Annotation token, AnnotationSet alist,
@@ -633,25 +613,16 @@ public class Scoper extends AbstractLanguageAnalyser
 
     /** Find the token which corresponds to this trigger */
     public static Annotation getToken(Annotation trigger, AnnotationSet alist) {
-        Annotation token = getCoextensive(trigger, alist.get(TOKEN_ANNOTATION_TYPE));
-        if (token == null) {
-            if (DEBUG) System.err.println("Warning: no token for trigger");
+        return getCoextensive(trigger, alist.get(TOKEN_ANNOTATION_TYPE));
+    }
+    private Annotation getToken(Annotation trigger) {
+        Annotation token = getToken(trigger, inAnns);
+        if (DEBUG && token == null) {
+            System.err.println( "Warning: no token for trigger ("
+                + getAnnotationText(trigger).toString() + ")" );
         }
         return token;
     }
-    private Annotation getToken(Annotation trigger) {
-        return getToken(trigger, inAnns);
-    }
-
-// DO NOT USE: if token has several triggers this may not get the right trigger.
-//    /** Find the trigger which corresponds to this token */
-//    public static Annotation getTrigger(Annotation token, AnnotationSet alist) {
-//        Annotation trigger = getCoextensive(token, alist.get(TRIGGER_ANNOTATION_TYPE));
-//        return trigger;
-//    }
-//    private Annotation getTrigger(Annotation token) {
-//        return getTrigger(token, inAnns);
-//    }
 
     /** Find the first coextensive annotation in a list or return null */
     public static Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
