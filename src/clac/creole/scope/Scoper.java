@@ -643,14 +643,15 @@ public class Scoper extends AbstractLanguageAnalyser
         return getToken(trigger, inAnns);
     }
 
-    /** Find the trigger which corresponds to this token */
-    public static Annotation getTrigger(Annotation token, AnnotationSet alist) {
-        Annotation trigger = getCoextensive(token, alist.get(TRIGGER_ANNOTATION_TYPE));
-        return trigger;
-    }
-    private Annotation getTrigger(Annotation token) {
-        return getTrigger(token, inAnns);
-    }
+// DO NOT USE: if token has several triggers this may not get the right trigger.
+//    /** Find the trigger which corresponds to this token */
+//    public static Annotation getTrigger(Annotation token, AnnotationSet alist) {
+//        Annotation trigger = getCoextensive(token, alist.get(TRIGGER_ANNOTATION_TYPE));
+//        return trigger;
+//    }
+//    private Annotation getTrigger(Annotation token) {
+//        return getTrigger(token, inAnns);
+//    }
 
     /** Find the first coextensive annotation in a list or return null */
     public static Annotation getCoextensive(Annotation ann, AnnotationSet alist) {
