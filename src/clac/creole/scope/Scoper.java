@@ -217,7 +217,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the scope of a modifier.
-     * e.g. *mod(X) =&gt; scope(X)
+     * trigger(T) ^ *mod(X, T) =&gt; scope(X)
      */
     private void modScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Annotate the governor of mod dependencies, if exists
@@ -230,7 +230,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the subject of an adjective with a copula.
-     * e.g. cop(X) ^ nsubj(Y) =&gt; scope(Y)
+     * trigger(T) ^ adjective(T) ^ cop(T, X) ^ nsubj(X, Y) =&gt; scope(Y)
      */
     private void copsubjScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Filter all but adjectives
@@ -250,7 +250,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the scope of a noun with a premodifier.
-     * e.g. amod(Y) ^ amod(X) ^ Y &lt; X =&gt; scope(X)
+     * trigger(T) ^ noun(T) ^ *mod(Y, T) ^ *mod(X, T) ^ Y &lt; X =&gt; scope(X)
      */
     private void prenommodScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Filter all but nouns
@@ -282,7 +282,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate using the grammarscope approach.
-     * e.g. dep(X) ^ xdep(Y) ^ scope(X, Y)
+     * trigger(T) ^ *dep(T, X) =&gt; scope(X)
      */
     private void grammarScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Get dependants for this trigger
