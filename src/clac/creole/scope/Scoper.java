@@ -28,10 +28,10 @@ import gate.creole.metadata.*;
 import gate.util.*;
 
 /**
- * This class is the implementation of the resource SCOPEEXPORTER.
+ * This class is the implementation of the resource SCOPER.
  */
 @CreoleResource(name = "Scoper",
-        comment = "Annotates Scope of Adjectives from a Trigger List")
+        comment = "Annotates Scope of a Trigger List")
 public class Scoper extends AbstractLanguageAnalyser
         implements ProcessingResource {
 
@@ -40,8 +40,10 @@ public class Scoper extends AbstractLanguageAnalyser
     protected String outputAnnotationSetName;
     protected String sentenceAnnName;
     protected String triggerAnnName;
+    protected boolean includeTrigger;
     protected boolean filterPredicates;
     protected boolean enableAdjScope;
+    protected boolean enableNegatorScope;
     protected boolean enableNomScope;
     protected boolean enableGrammarScope;
 
@@ -75,10 +77,13 @@ public class Scoper extends AbstractLanguageAnalyser
               TRIGGER_POLARITY_FEATURE, TRIGGER_SCORE_FEATURE };
 
     // Token
-    public static final String TOKEN_ANNOTATION_TYPE    = ANNIEConstants.TOKEN_ANNOTATION_TYPE;
-    public static final String TOKEN_CATEGORY_FEATURE   = ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
-    public static final String TOKEN_CATEGORY_ADJECTIVE = "JJ"; // Matches JJ.* (see filterPos)
-    public static final String TOKEN_CATEGORY_NOUN      = "NN"; // Matches NN.* (see filterPos)
+    public static final String TOKEN_ANNOTATION_TYPE  = ANNIEConstants.TOKEN_ANNOTATION_TYPE;
+    public static final String TOKEN_STRING_FEATURE   = ANNIEConstants.TOKEN_STRING_FEATURE_NAME;
+    public static final String TOKEN_CATEGORY_FEATURE = ANNIEConstants.TOKEN_CATEGORY_FEATURE_NAME;
+    public static final String TOKEN_CATEGORY_ADJ     = "JJ"; // Matches JJ.* (see filterPos)
+    public static final String TOKEN_CATEGORY_NOUN    = "NN"; // Matches NN.* (see filterPos)
+    public static final String TOKEN_CATEGORY_PREP    = "IN";
+    public static final String TOKEN_CATEGORY_CONJ    = "CC";
 
     // Phrase (SyntaxTreeNode)
     public static final String PHRASE_ANNOTATION_TYPE  = Parser.PHRASE_ANNOTATION_TYPE;
@@ -90,13 +95,27 @@ public class Scoper extends AbstractLanguageAnalyser
     public static final String DEPENDENCY_ARG_FEATURE     = Parser.DEPENDENCY_ARG_FEATURE;
     public static final String DEPENDENCY_LABEL_FEATURE   = Parser.DEPENDENCY_LABEL_FEATURE;
 
-    public static final String[] CONJ_DEPENDENCIES = { "conj" }; // Matches conj* (see filterConjDependencies)
-    public static final String[] COP_DEPENDENCIES  = { "cop", "auxpass" };
-    public static final String[] SUBJ_DEPENDENCIES = { "nsubj" };
-    public static final String[] MOD_DEPENDENCIES  =
-            { "advmod", "amod", "infmod", "nn", "partmod", "quantmod", "rcmod" };
+    public static final String[] CONJ_DEPENDENCIES     = { "conj" };
+    public static final String[] PREP_OF_DEPENDENCIES  = { "prep_of" };
+    public static final String[] PREP_DEPENDENCIES     = { "prep" };
+    // TODO: prep or prepc ? e.g. prepc_without
+    // currently matching all "starting with", but this may lead to false positives
+    public static final String[] AUX_DEPENDENCIES      = { "aux" };
+    // TODO: check additional aux dependencies:
+    // cop, auxpass
+    public static final String[] COP_DEPENDENCIES      = { "cop", "auxpass" };
+    public static final String[] DET_DEPENDENCIES      = { "det" };
+    public static final String[] NEG_DEPENDENCIES      = { "neg" };
+    public static final String[] COMP_DEPENDENCIES     = { "dobj", "xcomp", "ccomp" };
+    // TODO: check additional comp dependencies:
+    // acomp, attr, complm, obj, iobj, pobj, mark, rel
+    public static final String[] SUBJ_DEPENDENCIES     = { "nsubj", "nsubjpass" };
+    // TODO: check additional subj dependencies
+    // csubj, csubjpass
+    public static final String[] MOD_DEPENDENCIES      =
+            { "advmod", "amod", "infmod", "nn", "partmod", "quantmod" };
     // TODO: check if we should include the following list of mod dependencies:
-    // advcl, appos, det, discourse, goeswith, mark, mwe, padvmo,
+    // advcl, appos, det, discourse, goeswith, mark, mwe, neg, padvmo, rcmod
     // num, number, poss, possessive, preconj, predet, prep, prtd.
 
     public static final String NO_SCOPE              = "noscope";
@@ -131,7 +150,7 @@ public class Scoper extends AbstractLanguageAnalyser
 
         AnnotationSet triggers = inAnns.get(triggerAnnName);
 
-        // PHASE 1: Attempt to find scope for all predicates
+        // Optionally remove triggers which are not predicates
         List<Annotation> predicates;
         if (filterPredicates) {
             predicates = filterTypes( gate.Utils.inDocumentOrder(triggers),
@@ -139,10 +158,39 @@ public class Scoper extends AbstractLanguageAnalyser
         } else {
             predicates = gate.Utils.inDocumentOrder(triggers);
         }
+
+        // PHASE 1: Attempt to find scope for all predicates
         for (Annotation predicate : predicates) {
+            // Make sure predicates are limited to a single token
             Annotation token = getToken(predicate);
             if (token != null) {
-                List<ScoperDependency> deps = getDependencies(predicate);
+                // NOTE: Pass the heuristic functions the following:
+                //     predicate: The Trigger Annotation
+                //     deps: Dependencies with Trigger as argument (Governor or Dependant)
+                //     cdeps: Collapsed Dependencies inferring trigger (such as prepc_without, conj_nor)
+                //     inAnns: Required only to get other dependencies
+                List<ScoperDependency> deps  = getDependencies(predicate);
+                List<ScoperDependency> cdeps = getCollapsedDependencies(predicate);
+                if (enableNegatorScope) {
+                    // Prepositions:
+                    prepcScope(predicate, cdeps);
+                    // Conjunctions:
+                    conjScope(predicate, cdeps);
+                    // Auxiliary:
+                    auxScope(predicate, deps);
+                    // Verbs:
+                    compScope(predicate, deps);
+                    subjScope(predicate, deps);
+                    // Nouns
+                    nominalofScope(predicate, deps);
+                    pronomsubjScope(predicate, deps);
+                    // Adjectives, Adverbs, Determiners
+                    negScope(predicate, deps);
+                    modScope(predicate, deps);
+                    copsubjScope(predicate, deps);
+                    // Determiners
+                    detScope(predicate, deps, inAnns);
+                }
                 if (enableAdjScope) {
                     modScope(predicate, deps);
                     copsubjScope(predicate, deps);
@@ -163,7 +211,8 @@ public class Scoper extends AbstractLanguageAnalyser
             // Get list of scopes this trigger is embedded in
             PriorityQueue<Annotation> scopes =
                     getPath(trigger, SCOPE_ANNOTATION_TYPE);
-            ArrayList<Integer> ids = getIdList(scopes);
+            // Get list as Annotation IDs, and verify that trigger does not scope over itself
+            ArrayList<Integer> ids = getIdList(trigger, scopes);
 
             if (!ids.isEmpty()) {
                 features.put(TRIGGER_RSCOPEIDS_FEATURE, ids);
@@ -196,11 +245,15 @@ public class Scoper extends AbstractLanguageAnalyser
         }
     }
 
-    /** Convert annotations to a list of ids */
-    public static ArrayList<Integer> getIdList(Iterable<Annotation> anns) {
+    /** Convert annotations to a list of ids.
+     * If the annotations are scopes, verify that the trigger does not scope over itself. */
+    public static ArrayList<Integer> getIdList(Annotation trigger, Iterable<Annotation> anns) {
         ArrayList<Integer> ids = new ArrayList<Integer>();
         for (Annotation ann : anns) {
-            ids.add(new Integer(ann.getId()));
+            if (ann.getFeatures().get(SCOPE_TRIGGERID_FEATURE)==null
+                    || !trigger.getId().equals(ann.getFeatures().get(SCOPE_TRIGGERID_FEATURE))) {
+                ids.add(Integer.parseInt(ann.getId().toString()));
+            }
         }
         return ids;
     }
@@ -216,8 +269,153 @@ public class Scoper extends AbstractLanguageAnalyser
         init();
     }
 
+    // Scope Heuristics
+
+    /** Annotate the scope of a negation modifier.
+     * trigger(T) ^ neg(X, T) =&gt; scope(X)
+     */
+    private void negScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Annotate the governor of neg dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, NEG_DEPENDENCIES, false);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+    }
+
+    /** Annotate the scope of a negation determiner.
+     * trigger(T) ^ det(X, T) ^ comp(Y, X) =&gt; scope(Y)
+     */
+    private void detScope(Annotation trigger, List<ScoperDependency> dependencies, AnnotationSet alist) {
+        // Annotate the governor of det dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, DET_DEPENDENCIES, false);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        // If that governor is the object of a verb, include that verb
+        // TODO: only supports single target (this should be fine)
+        Annotation target = alist.get(Integer.parseInt(scopeDeps.get(0).getTargetId().toString()));
+        List<ScoperDependency> targetDependencies = getDependencies(target);
+        List<ScoperDependency> tempDeps =
+                filterDependencies(targetDependencies, COMP_DEPENDENCIES, false);
+        if (!(tempDeps == null || tempDeps.isEmpty()))
+            scopeDeps.addAll(tempDeps);
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, "det");
+    }
+
+    /** Annotate the scope of a subject.
+     * trigger(T) ^ nsubj(X, T) =&gt; scope(X)
+     */
+    private void pronomsubjScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Annotate the governor of nsubj dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, SUBJ_DEPENDENCIES, false);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, "pronomsubj");
+    }
+
+    /** Annotate the scope of a preposition.
+     * trigger(T) ^ preposition(T) ^ prepc_*(Y, X) =&gt; scope(X)
+     */
+    private void prepcScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Filter all but prepositions
+        Annotation token = getToken(trigger);
+        if (!filterPos(token, TOKEN_CATEGORY_PREP)) return;
+        // Annotate the target of PREP dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependenciesStartsWith(dependencies, PREP_DEPENDENCIES, true);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+    }
+
+    /** Annotate the scope of a verb.
+     * trigger(T) ^ comp(T, X) =&gt; scope(X)
+     */
+    private void compScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Annotate the governor of nsubj dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, COMP_DEPENDENCIES, true);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+    }
+
+    /** Annotate the scope of an intransitive verb.
+     * trigger(T) ^ subj(T, X) =&gt; scope(X)
+     */
+    private void subjScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Annotate the governor of nsubj dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, SUBJ_DEPENDENCIES, true);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+    }
+
+    /** Annotate the scope of a nominalization with of.
+     * trigger(T) ^ noun(T) ^ prep_of(T, X) =&gt; scope(X)
+     */
+    private void nominalofScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Filter all but nouns
+        Annotation token = getToken(trigger);
+        if (!filterPos(token, TOKEN_CATEGORY_NOUN)) return;
+        // Annotate the target of prep_of dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, PREP_OF_DEPENDENCIES, true);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, "nominalof");
+    }
+
+    /** Annotate the scope of conjunction.
+     * trigger(T) ^ cc(T) ^ conj_*(Y, X) =&gt; scope(X)
+     */
+    private void conjScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Filter all but prepositions
+        Annotation token = getToken(trigger);
+        if (!filterPos(token, TOKEN_CATEGORY_PREP)) return;
+        // Annotate the target of PREP dependencies
+        List<ScoperDependency> scopeDeps =
+                filterDependenciesStartsWith(dependencies, CONJ_DEPENDENCIES, true);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+    }
+
+    /** Annotate the scope of an auxiliary.
+     * trigger(T) ^ aux(X, T) =&gt; scope(X)
+     */
+    private void auxScope(Annotation trigger, List<ScoperDependency> dependencies) {
+        // Annotate the governor of mod dependencies, if exists
+        List<ScoperDependency> scopeDeps =
+                filterDependencies(dependencies, AUX_DEPENDENCIES, false);
+        if (scopeDeps == null || scopeDeps.isEmpty()) return;
+        List<Annotation> scopeAnns = targetsToAnns(scopeDeps);
+        // Use the trigger to find the scope
+        Annotation scope = getPhrase(trigger, scopeAnns);
+        annotateScope(scope, trigger, scopeDeps.get(0).getType());
+    }
+
     /** Annotate the scope of a modifier.
-     * trigger(T) ^ *mod(X, T) =&gt; scope(X)
+     * trigger(T) ^ mod(X, T) =&gt; scope(X)
      */
     private void modScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Annotate the governor of mod dependencies, if exists
@@ -230,12 +428,12 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the subject of an adjective with a copula.
-     * trigger(T) ^ adjective(T) ^ cop(T, X) ^ nsubj(X, Y) =&gt; scope(Y)
+     * trigger(T) ^ adjective(T) ^ cop(T, X) ^ nsubj(T, Y) =&gt; scope(Y)
      */
     private void copsubjScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Filter all but adjectives
         Annotation token = getToken(trigger);
-        if (!filterPos(token, TOKEN_CATEGORY_ADJECTIVE)) return;
+        if (!filterPos(token, TOKEN_CATEGORY_ADJ)) return;
         // Check if there is a copula
         List<ScoperDependency> copDeps =
                 filterDependencies(dependencies, COP_DEPENDENCIES);
@@ -250,7 +448,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     /** Annotate the scope of a noun with a premodifier.
-     * trigger(T) ^ noun(T) ^ *mod(Y, T) ^ *mod(X, T) ^ Y &lt; X =&gt; scope(X)
+     * trigger(T) ^ noun(T) ^ mod(Y, T) ^ mod(X, T) ^ Y &lt; X =&gt; scope(X)
      */
     private void prenommodScope(Annotation trigger, List<ScoperDependency> dependencies) {
         // Filter all but nouns
@@ -356,20 +554,22 @@ public class Scoper extends AbstractLanguageAnalyser
         return filterDependencies(dependencies, true);
     }
 
-    public static List<ScoperDependency> filterConjDependencies(
-            List<ScoperDependency> dependencies, boolean gov) {
+    public static List<ScoperDependency> filterDependenciesStartsWith(
+            List<ScoperDependency> dependencies, String[] types, boolean gov) {
         List<ScoperDependency> results = new ArrayList<ScoperDependency>();
         for (ScoperDependency dependency : dependencies) {
-            if ( !(dependency.getType().startsWith(CONJ_DEPENDENCIES[0]))
-                    && dependency.isGov() == gov ) {
-                results.add(dependency);
+            for (int i = 0; i < types.length; i++) {
+                if ( dependency.getType().startsWith(types[i])
+                        && dependency.isGov() == gov ) {
+                    results.add(dependency);
+                }
             }
         }
         return results;
     }
-    public static List<ScoperDependency> filterConjDependencies(
-            List<ScoperDependency> dependencies) {
-        return filterConjDependencies(dependencies, true);
+    public static List<ScoperDependency> filterDependenciesStartsWith(
+            List<ScoperDependency> dependencies, String[] types) {
+        return filterDependenciesStartsWith(dependencies, types, true);
     }
 
     /** Convert scoper dependency targets into Annotations */
@@ -388,7 +588,7 @@ public class Scoper extends AbstractLanguageAnalyser
     /** Find the smallest phrase dominating a list of tokens. */
     public static Annotation getPhrase(List<Annotation> tokens,
             AnnotationSet alist) {
-        // Get the STN path for each token
+        // Get the STN path for each token (from smallest to largest)
         List<PriorityQueue<Annotation>> paths = new ArrayList<PriorityQueue<Annotation>>();
         for (Annotation token : tokens) {
             paths.add(getPath(token, PHRASE_ANNOTATION_TYPE, alist));
@@ -406,29 +606,66 @@ public class Scoper extends AbstractLanguageAnalyser
             }
             if (commonNode) return node;
         }
-        System.err.println("Error: No common node");
+        System.err.println("Error: No common node for candidate tokens");
         return null;
     }
     private Annotation getPhrase(List<Annotation> tokens) {
         return getPhrase(tokens, inAnns);
     }
 
+    /** Find the largest phrase dominating a list of tokens, but not including the trigger.
+     *  Reverts to getPhrase(tokens) if no node is found.
+     **/
+    public static Annotation getPhrase(Annotation trigger, List<Annotation> tokens,
+            AnnotationSet alist) {
+        // Get the STN path for the trigger
+        PriorityQueue<Annotation> triggerPath = getPath(trigger, PHRASE_ANNOTATION_TYPE, alist);
+        // Get the STN path for each token (from largest to smallest)
+        List<PriorityQueue<Annotation>> paths = new ArrayList<PriorityQueue<Annotation>>();
+        for (Annotation token : tokens) {
+            paths.add(getPath(token, PHRASE_ANNOTATION_TYPE, false, alist));
+        }
+        // Find the largest STN which is common to all paths but excludes trigger
+        PriorityQueue<Annotation> path1 = paths.get(0);
+        while (path1.size() != 0) {
+            Annotation node = path1.remove();
+            if (triggerPath.contains(node)) continue;
+            boolean commonNode = true;
+            for (int i=1; i<paths.size(); i++) {
+                if (!paths.get(i).contains(node)) {
+                    commonNode = false;
+                    break;
+                }
+            }
+            if (commonNode) return node;
+        }
+        System.err.println("Warning: No common node for candidate tokens excluding trigger");
+        // Revert to getPhrase without trigger
+        return getPhrase(tokens, alist);
+    }
+    private Annotation getPhrase(Annotation trigger, List<Annotation> tokens) {
+        return getPhrase(trigger, tokens, inAnns);
+    }
+
     /** Standard function for creating scope annotation and features */
     private void annotateScope(Long startOffset, Long endOffset,
                                Annotation trigger, String heuristic)
                         throws InvalidOffsetException {
-        // If scope already exists issue a warning
+        // If scope already exists for a different heuristic issue a warning
         Annotation scope = getScope(trigger);
         if (scope != null) {
             if (DEBUG) {
-                String newScope = this.getDocument().getContent().getContent(
-                        startOffset, endOffset).toString();
-                System.err.println("Warning: Multiple scopes detected for trigger:");
-                System.err.println("    OLD: "+getAnnotationText(trigger)+" -> ("
-                                  +scope.getFeatures().get(SCOPE_HEURISTIC_FEATURE)+") "
-                                  +getAnnotationText(scope));
-                System.err.println("    NEW: "+getAnnotationText(trigger)+" -> ("
-                                  +heuristic+") "+newScope);
+                String oldHeuristic =
+                    scope.getFeatures().get(SCOPE_HEURISTIC_FEATURE).toString();
+                if (!heuristic.equals(oldHeuristic)) {
+                    String newScope = this.getDocument().getContent().getContent(
+                            startOffset, endOffset).toString();
+                    System.err.println("Warning: Multiple scopes detected for trigger:");
+                    System.err.println("    OLD: "+getAnnotationText(trigger)+" -> ("
+                                      +oldHeuristic+") "+getAnnotationText(scope));
+                    System.err.println("    NEW: "+getAnnotationText(trigger)+" -> ("
+                                      +heuristic+") "+newScope);
+                }
             }
         // Otherwise annotate scope
         } else {
@@ -548,14 +785,27 @@ public class Scoper extends AbstractLanguageAnalyser
 
     /** Starting from a token, get a sorted list of embedded typed Annotations */
     public static PriorityQueue<Annotation> getPath(Annotation token,
-            String type, AnnotationSet alist) {
+            String type, boolean naturalOrder, AnnotationSet alist) {
         Comparator<Annotation> comparator = new AnnotationSpanComparator();
-        PriorityQueue<Annotation> queue =
-                new PriorityQueue<Annotation>(10, comparator);
+        PriorityQueue<Annotation> queue = null;
+        if (naturalOrder) {
+            queue = new PriorityQueue<Annotation>(10, comparator);
+        } else {
+            queue = new PriorityQueue<Annotation>(10,
+                            Collections.reverseOrder(comparator));
+        }
         for (Annotation a : getOverlaping(token, alist.get(type))) {
             queue.add(a);
         }
         return queue;
+    }
+    public static PriorityQueue<Annotation> getPath(Annotation token, String type,
+            AnnotationSet alist) {
+        return getPath(token, type, true, alist);
+    }
+    private PriorityQueue<Annotation> getPath(Annotation token, String type,
+            boolean naturalOrder) {
+        return getPath(token, type, naturalOrder, inAnns);
     }
     private PriorityQueue<Annotation> getPath(Annotation token, String type) {
         return getPath(token, type, inAnns);
@@ -573,6 +823,7 @@ public class Scoper extends AbstractLanguageAnalyser
             String[] args = ids.split("\\,");
             int depId = Integer.parseInt(args[1].trim());
             int govId = Integer.parseInt(args[0].trim());
+            // Convert dependency annotation to ScoperDependency
             if (token.getId() == govId) {
                 depList.add(new ScoperDependency(type, depId, true));
             }
@@ -584,6 +835,29 @@ public class Scoper extends AbstractLanguageAnalyser
     }
     private List<ScoperDependency> getDependencies(Annotation trigger) {
         return getDependencies(trigger, inAnns);
+    }
+
+    public static List<ScoperDependency> getCollapsedDependencies(Annotation trigger,
+            AnnotationSet alist) {
+        ArrayList<ScoperDependency> depList = new ArrayList<ScoperDependency>();
+        Annotation token = getToken(trigger, alist);
+        for (Annotation dep : getOverlaping(trigger, alist.get(DEPENDENCY_ANNOTATION_TYPE))) {
+            String type = dep.getFeatures().get(DEPENDENCY_LABEL_FEATURE).toString().trim();
+            if ( !type.endsWith(token.getFeatures().get(TOKEN_STRING_FEATURE).toString()) ) continue;
+            String ids  = dep.getFeatures().get(DEPENDENCY_ARG_FEATURE).toString().trim();
+            ids = ids.substring(1, ids.length()-1);
+            String[] args = ids.split("\\,");
+            int depId = Integer.parseInt(args[1].trim());
+            int govId = Integer.parseInt(args[0].trim());
+            // Convert dependency annotation to ScoperDependency
+            // Add two dependencies for every collapsed dependency
+            depList.add(new ScoperDependency(type, depId, true));
+            depList.add(new ScoperDependency(type, govId, false));
+        }
+        return depList;
+    }
+    private List<ScoperDependency> getCollapsedDependencies(Annotation trigger) {
+        return getCollapsedDependencies(trigger, inAnns);
     }
 
     /** Get the scope type */
@@ -702,7 +976,18 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     @RunTime
-    @CreoleParameter(comment = "",
+    @CreoleParameter(comment = "Include the trigger as part of the narrow scope (doesn't apply to adj/adv scope)",
+                     defaultValue = "false")
+    public void setIncludeTrigger(Boolean includeTrigger) {
+        this.includeTrigger = includeTrigger;
+    }
+
+    public Boolean getIncludeTrigger() {
+        return this.includeTrigger;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "Only annotate scope for triggers with a predicate type in Scoper.PREDICATE_ALL",
                      defaultValue = "false")
     public void setFilterPredicates(Boolean filterPredicates) {
         this.filterPredicates = filterPredicates;
@@ -713,7 +998,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     @RunTime
-    @CreoleParameter(comment = "",
+    @CreoleParameter(comment = "Enable the Adjective/Adverb scope heuristics",
                      defaultValue = "true")
     public void setEnableAdjScope(Boolean enableAdjScope) {
         this.enableAdjScope = enableAdjScope;
@@ -724,7 +1009,18 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     @RunTime
-    @CreoleParameter(comment = "",
+    @CreoleParameter(comment = "Enable the Negator scope heuristics",
+                     defaultValue = "true")
+    public void setEnableNegatorScope(Boolean enableNegatorScope) {
+        this.enableNegatorScope = enableNegatorScope;
+    }
+
+    public Boolean getEnableNegatorScope() {
+        return this.enableNegatorScope;
+    }
+
+    @RunTime
+    @CreoleParameter(comment = "Enable the nominal scope (DEPRICATED)",
                      defaultValue = "false")
     public void setEnableNomScope(Boolean enableNomScope) {
         this.enableNomScope = enableNomScope;
@@ -735,8 +1031,7 @@ public class Scoper extends AbstractLanguageAnalyser
     }
 
     @RunTime
-    @CreoleParameter(comment = "Annotate the scope as defined by Stanford's"
-                              +" GrammarScope (EXPERIMENTAL)",
+    @CreoleParameter(comment = "Annotate the scope as defined by Stanford's GrammarScope (EXPERIMENTAL)",
                      defaultValue = "false")
     public void setEnableGrammarScope(Boolean enableGrammarScope) {
         this.enableGrammarScope = enableGrammarScope;
