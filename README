@@ -4,9 +4,7 @@ Scoper
 Instructions
 ------------
 
-This is a GATE Processing Resource is used to annotate the scope of a
-generic trigger.
-
+This is a GATE Processing Resource used to annotate the scope of a generic trigger.
 
 Requirements:
     - Stanford Parser Wrapper (For Annotation Types)
